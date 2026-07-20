@@ -1,0 +1,10 @@
+# Supabase local project config placeholder.
+# Replace with output from `supabase init` when linking a project.
+
+project_id = "eventpilot"
+
+[api]
+enabled = true
+
+[db]
+major_version = 15
