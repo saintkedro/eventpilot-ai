@@ -2,5 +2,6 @@
 
 Implementation-focused docs for this repository.
 
-- Product vision and PRDs: [`../../EventPilot_Foundation/`](../../EventPilot_Foundation/)
+- Product vision and PRDs: `product/`
+- Design system: `design/`
 - Architecture Decision Records (ADRs): `architecture/`

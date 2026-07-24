@@ -1,39 +1,125 @@
 # EventPilot
 
-AI-powered Event Operating System — Next.js application.
+> **The event coordinator in your WhatsApp chat**
 
-## Stack
+EventPilot is a WhatsApp-native event management platform. Organizers set up and manage any event through simple, human conversation — no app to learn, no forms to fill.
 
-- Next.js (App Router), TypeScript, Tailwind CSS
-- Supabase (auth, database, storage)
-- OpenAI, Meta WhatsApp Cloud API
+The web supports guests and payments where chat is not enough. The dashboard is optional.
+
+---
+
+## Vision
+
+Organize any event through a simple conversation on WhatsApp.
+
+---
+
+## Mission
+
+Enable anyone to create and manage successful events through natural conversation, without learning new software.
+
+---
+
+## Core Experience
+
+- 💬 Event management entirely on WhatsApp
+
+- 🤖 Human-feeling conversational AI
+
+- 🌐 Auto-generated event pages (shareable links)
+
+- 🎟️ RSVP & ticketing via WhatsApp and web
+
+- ✅ QR check-in on event day
+
+- 📊 Reports on demand in chat
+
+---
+
+## Technology Stack
+
+- Next.js
+
+- React
+
+- TypeScript
+
+- Tailwind CSS
+
+- Supabase
+
+- OpenAI
+
+- WhatsApp Cloud API
+
 - Vercel
 
-## Local development
+---
+
+## Getting Started
+
+Install dependencies
 
 ```bash
+
 npm install
-cp .env.example .env.local
-npm run dev
+
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Run the development server
 
-## Environment variables
+```bash
 
-See [.env.example](./.env.example) for required variable names. Do not commit secrets.
+npm run dev
+
+```
+
+Open:
+
+```
+
+[http://localhost:3000](http://localhost:3000)
+
+```
+
+---
+
+## Environment Variables
+
+Create a `.env.local` file and add the required environment variables.
+
+See `.env.example` for reference.
+
+---
 
 ## Documentation
 
-- Product and architecture foundations: [`../EventPilot_Foundation/`](../EventPilot_Foundation/)
-- App conventions: [`app/README.md`](./app/README.md), [`features/README.md`](./features/README.md)
+Complete product documentation is available in:
 
-## Folder overview
+```
 
-| Path | Purpose |
-|------|---------|
-| `app/` | Routes, layouts, API route handlers |
-| `features/` | Domain slices (events, messaging, AI, …) |
-| `components/` | Shared UI shell and providers |
-| `lib/` | Integrations and cross-cutting utilities |
-| `supabase/` | Migrations and local Supabase config |
+docs/product/
+
+```
+
+---
+
+## Contributing
+
+Please read:
+
+- [CONTRIBUTING.md](http://CONTRIBUTING.md)
+
+- CODE_OF_[CONDUCT.md](http://CONDUCT.md)
+
+before contributing.
+
+---
+
+## License
+
+MIT License
+
+---
+
+Built with ❤️ by **Everyday Digital Services (EDS)**.
