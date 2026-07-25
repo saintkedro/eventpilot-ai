@@ -1,5 +1,4 @@
-import { getWhatsAppEnv } from "@/lib/env/server";
-import { checkWhatsAppCredentials } from "@/lib/whatsapp/diagnostics";
+import { checkWhatsAppCredentials, checkWhatsAppDeep } from "@/lib/whatsapp/diagnostics";
 
 export const runtime = "nodejs";
 
@@ -8,7 +7,7 @@ function envPresent(name: string): boolean {
 }
 
 /** WhatsApp integration diagnostics (no secrets returned). */
-export async function GET() {
+export async function GET(request: Request) {
   const envChecks = {
     accessToken: envPresent("WHATSAPP_ACCESS_TOKEN"),
     phoneNumberId: envPresent("WHATSAPP_PHONE_NUMBER_ID"),
@@ -28,29 +27,46 @@ export async function GET() {
     });
   }
 
+  const deep = new URL(request.url).searchParams.get("deep") === "1";
+
   try {
-    const credentials = await checkWhatsAppCredentials();
+    const credentials = deep
+      ? await checkWhatsAppDeep()
+      : await checkWhatsAppCredentials();
+
+    const status = credentials.ok
+      ? deep && "issues" in credentials && credentials.issues.length > 0
+        ? "webhook_misconfigured"
+        : "ok"
+      : "token_invalid";
 
     return Response.json({
-      status: credentials.ok ? "ok" : "token_invalid",
+      status,
       env: envChecks,
       credentials,
       troubleshooting: {
         noReplyChecklist: [
-          "Meta webhook Callback URL must be https://YOUR-APP.vercel.app/api/webhooks/whatsapp (not ngrok)",
+          "Meta webhook Callback URL: https://eventpilot-ai-ev5i.vercel.app/api/webhooks/whatsapp",
           "Webhook field 'messages' must be subscribed",
-          "Your phone must be on Meta test recipient list (API Setup)",
-          "Message the Meta TEST business number, not your own number",
-          "After env changes in Vercel, redeploy",
-          "Check Vercel Runtime Logs for whatsapp.webhook.reply_failed",
+          "Run POST /{WABA_ID}/subscribed_apps if deep check shows app not subscribed",
+          "Your phone must be on Meta test recipient list (Try it out → manage phone numbers)",
+          "Message the Meta TEST business number +1 555-193-2991, not your own number",
+          "403 on bare webhook URL in browser is normal — not an error",
+          "Check Vercel Runtime Logs for whatsapp.inbound, reply_sent, or reply_failed",
         ],
         commonErrors: {
-          "131030": "Recipient not on Meta test list — add your phone in API Setup",
+          "131030":
+            "Recipient not on Meta test list — add your phone in API Setup / Try it out",
           "190": "Access token expired — regenerate in Meta API Setup and update Vercel",
-          signature_invalid: "WHATSAPP_APP_SECRET mismatch between Vercel and Meta app",
+          signature_invalid:
+            "WHATSAPP_APP_SECRET mismatch between Vercel and Meta app",
           status_only_webhook:
             "Payload has statuses only (delivery receipt), not your message — send a new Hi",
+          webhook_misconfigured:
+            "Token OK but WABA not linked to app — run scripts/fix-waba-subscription.mjs",
         },
+        deepCheckUrl:
+          "https://eventpilot-ai-ev5i.vercel.app/api/health/whatsapp?deep=1",
       },
     });
   } catch (error) {

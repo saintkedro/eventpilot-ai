@@ -32,12 +32,33 @@ export async function sendTextMessage(
 
   if (!response.ok) {
     const errorBody = await response.text();
+    let metaCode: number | undefined;
+    let metaMessage: string | undefined;
+
+    try {
+      const parsed = JSON.parse(errorBody) as {
+        error?: { code?: number; message?: string };
+      };
+      metaCode = parsed.error?.code;
+      metaMessage = parsed.error?.message;
+    } catch {
+      // keep raw body
+    }
+
     logError("whatsapp.send_failed", {
       status: response.status,
+      metaCode,
+      metaMessage,
       error: errorBody,
+      hint:
+        metaCode === 131030
+          ? "Add your phone to Meta test recipient list (Try it out → manage phone numbers)"
+          : undefined,
     });
     throw new Error(
-      `WhatsApp send failed (${response.status}): ${errorBody}`,
+      metaMessage
+        ? `WhatsApp send failed (${metaCode ?? response.status}): ${metaMessage}`
+        : `WhatsApp send failed (${response.status}): ${errorBody}`,
     );
   }
 
