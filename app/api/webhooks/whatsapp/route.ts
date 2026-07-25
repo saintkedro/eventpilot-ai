@@ -4,6 +4,7 @@ import { handleInboundWhatsAppMessage } from "@/features/whatsapp/server/handle-
 import { getWhatsAppEnv } from "@/lib/env/server";
 import { logError, logInfo } from "@/lib/logger";
 import { parseInboundMessages } from "@/lib/whatsapp/parse-webhook";
+import { extractWebhookFields } from "@/lib/whatsapp/extract-webhook-fields";
 import { summarizeWebhookPayload } from "@/lib/whatsapp/summarize-webhook";
 import { verifyWhatsAppSignature } from "@/lib/whatsapp/verify-signature";
 
@@ -54,11 +55,16 @@ export async function POST(request: NextRequest) {
     inboundMessages: summary.messageCount,
     statusUpdates: summary.statusCount,
     parsedMessages: messages.length,
+    fields: extractWebhookFields(payload),
   });
 
-  if (messages.length === 0 && summary.statusCount > 0) {
-    logInfo("whatsapp.webhook.status_only", {
-      note: "Delivery/read receipt — no reply sent",
+  if (messages.length === 0) {
+    logInfo("whatsapp.webhook.no_inbound_messages", {
+      fields: extractWebhookFields(payload),
+      hint:
+        summary.statusCount > 0
+          ? "Status-only webhook — no user message to reply to"
+          : "No messages in payload — check Meta webhook subscription or WABA subscribed_apps",
     });
   }
 
