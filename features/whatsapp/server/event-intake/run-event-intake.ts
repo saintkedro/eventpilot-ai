@@ -6,8 +6,12 @@ import {
 } from "@/features/whatsapp/server/event-intake/persist-event";
 import {
   buildIntakeUserPayload,
-  EVENT_INTAKE_SYSTEM_PROMPT,
+  buildEventIntakeSystemPrompt,
 } from "@/features/whatsapp/server/event-intake/prompts";
+import {
+  DEFAULT_TIMEZONE,
+  enrichDraftDates,
+} from "@/features/whatsapp/server/event-intake/resolve-relative-date";
 import type {
   ChatTurn,
   IntakeModelResponse,
@@ -150,15 +154,17 @@ export async function runEventIntake(
     return { reply, state, eventCreated: false };
   }
 
+  const referenceDate = new Date();
+
   const completion = await createChatCompletion([
-    { role: "system", content: EVENT_INTAKE_SYSTEM_PROMPT },
+    { role: "system", content: buildEventIntakeSystemPrompt(referenceDate) },
     ...state.history.map((turn) => ({
       role: turn.role,
       content: turn.content,
     })),
     {
       role: "user",
-      content: buildIntakeUserPayload(trimmed, state.draft),
+      content: buildIntakeUserPayload(trimmed, state.draft, referenceDate),
     },
   ]);
 
@@ -173,7 +179,16 @@ export async function runEventIntake(
     throw new Error("Failed to parse AI intake response");
   }
 
-  const mergedDraft = mergeDraft(state.draft, model.draft);
+  const aiDraft = mergeDraft(state.draft, model.draft);
+  const hadStartsAt = Boolean(aiDraft.starts_at?.trim());
+  const mergedDraft = enrichDraftDates(
+    aiDraft,
+    trimmed,
+    state.history,
+    referenceDate,
+  );
+  const dateResolvedByServer =
+    !hadStartsAt && Boolean(mergedDraft.starts_at?.trim());
   let reply = model.reply;
   let eventCreated = false;
   let eventId: string | undefined;
@@ -185,9 +200,9 @@ export async function runEventIntake(
   };
 
   const canCreate =
-    model.ready_to_create &&
     Boolean(mergedDraft.title?.trim()) &&
-    Boolean(mergedDraft.starts_at?.trim());
+    Boolean(mergedDraft.starts_at?.trim()) &&
+    (model.ready_to_create || dateResolvedByServer);
 
   if (canCreate) {
     const event = await createDraftEventFromIntake({

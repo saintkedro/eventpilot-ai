@@ -1,7 +1,6 @@
 import "server-only";
 
 import { runEventIntake } from "@/features/whatsapp/server/event-intake/run-event-intake";
-import { loadIntakeSessionState } from "@/features/whatsapp/server/event-intake/load-session-state";
 import {
   resolveOrCreateWhatsAppUser,
   touchWhatsAppSessionOutbound,
@@ -56,16 +55,6 @@ export async function handleInboundWhatsAppMessage(
   }
 
   try {
-    const trimmed = message.text.trim();
-    const isGreeting = /^(hi|hello|hey|start)\b/i.test(trimmed);
-    const sessionState = await loadIntakeSessionState(context.session.id);
-    const needsAi = !isGreeting || sessionState.step !== "idle";
-
-    // OpenAI can take 10–15s — ack first so the user knows we received the message.
-    if (needsAi) {
-      await sendTextMessage(message.from, "Got it — one moment…");
-    }
-
     const result = await runEventIntake({
       userMessage: message.text,
       context,
