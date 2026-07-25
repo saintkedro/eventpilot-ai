@@ -1,17 +1,33 @@
 import "server-only";
 
+import {
+  resolveOrCreateWhatsAppUser,
+  touchWhatsAppSessionOutbound,
+} from "@/features/whatsapp/server/resolve-or-create-user";
 import { sendTextMessage } from "@/lib/whatsapp/client";
 import { logInfo } from "@/lib/logger";
+import type { WhatsAppUserContext } from "@/features/whatsapp/server/resolve-or-create-user";
 import type { InboundWhatsAppMessage } from "@/lib/whatsapp/types";
 
-function buildReply(inboundText: string): string {
+function buildReply(
+  inboundText: string,
+  context: WhatsAppUserContext,
+): string {
   const trimmed = inboundText.trim();
 
-  if (/^(hi|hello|hey|start)\b/i.test(trimmed)) {
+  if (context.isNewUser && /^(hi|hello|hey|start)\b/i.test(trimmed)) {
     return [
       "Hi! I'm EventPilot — your event coordinator on WhatsApp.",
       "",
       "Tell me about the event you're planning, and I'll help you set it up.",
+    ].join("\n");
+  }
+
+  if (/^(hi|hello|hey|start)\b/i.test(trimmed)) {
+    return [
+      "Welcome back! I'm EventPilot.",
+      "",
+      "Tell me about the event you're planning, or ask me to update an existing one.",
     ].join("\n");
   }
 
@@ -32,13 +48,25 @@ export async function handleInboundWhatsAppMessage(
     messageId: message.messageId,
   });
 
-  if (message.type === "text" && message.text) {
-    await sendTextMessage(message.from, buildReply(message.text));
-    return;
-  }
+  const context = await resolveOrCreateWhatsAppUser({
+    waId: message.from,
+    inboundAt: message.timestamp
+      ? new Date(Number(message.timestamp) * 1000)
+      : undefined,
+  });
 
-  await sendTextMessage(
-    message.from,
-    "Thanks for reaching out! I can read text messages for now — tell me about the event you're planning.",
-  );
+  logInfo("whatsapp.user.resolved", {
+    profileId: context.profile.id,
+    organizationId: context.organization.id,
+    sessionId: context.session.id,
+    isNewUser: context.isNewUser,
+  });
+
+  const replyText =
+    message.type === "text" && message.text
+      ? buildReply(message.text, context)
+      : "Thanks for reaching out! I can read text messages for now — tell me about the event you're planning.";
+
+  await sendTextMessage(message.from, replyText);
+  await touchWhatsAppSessionOutbound(message.from);
 }

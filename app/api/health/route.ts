@@ -26,6 +26,7 @@ export async function GET() {
         verifyToken: envPresent("WHATSAPP_VERIFY_TOKEN"),
         appSecret: envPresent("WHATSAPP_APP_SECRET"),
       },
+      supabaseServiceRole: envPresent("SUPABASE_SERVICE_ROLE_KEY"),
     },
   });
 }

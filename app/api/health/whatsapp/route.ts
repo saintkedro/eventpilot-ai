@@ -1,4 +1,8 @@
-import { checkWhatsAppCredentials, checkWhatsAppDeep } from "@/lib/whatsapp/diagnostics";
+import {
+  checkWhatsAppCredentials,
+  checkWhatsAppDeep,
+  type WhatsAppDeepDiagnostics,
+} from "@/lib/whatsapp/diagnostics";
 
 export const runtime = "nodejs";
 
@@ -34,8 +38,12 @@ export async function GET(request: Request) {
       ? await checkWhatsAppDeep()
       : await checkWhatsAppCredentials();
 
+    const deepCredentials = deep
+      ? (credentials as WhatsAppDeepDiagnostics)
+      : null;
+
     const status = credentials.ok
-      ? deep && "issues" in credentials && credentials.issues.length > 0
+      ? deepCredentials && deepCredentials.issues.length > 0
         ? "webhook_misconfigured"
         : "ok"
       : "token_invalid";

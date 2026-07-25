@@ -2,16 +2,50 @@
 
 Database schema, migrations, and local development via [Supabase CLI](https://supabase.com/docs/guides/cli).
 
-## Workflow (when implemented)
+## Apply migrations (remote project)
 
-1. `supabase init` / use existing `config.toml`
-2. Author migrations in `migrations/`
-3. Apply locally: `supabase db reset` or `supabase migration up`
-4. Generate types into `types/database.ts`
+EventPilot project: `jczrjwuockbjcsosznln`
+
+### Option A — Supabase Dashboard (no CLI)
+
+1. Open [Supabase SQL Editor](https://supabase.com/dashboard/project/jczrjwuockbjcsosznln/sql/new)
+2. Paste contents of `migrations/20260725160000_whatsapp_core_schema.sql`
+3. Run
+
+### Option B — Supabase CLI
+
+```bash
+npm install -g supabase
+supabase login
+supabase link --project-ref jczrjwuockbjcsosznln
+supabase db push
+supabase gen types typescript --linked > types/database.ts
+```
+
+## Required env vars
+
+| Variable | Where |
+|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | Client + server |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Client + server |
+| `SUPABASE_SERVICE_ROLE_KEY` | Server only (WhatsApp webhook) |
+
+Get the service role key from **Project Settings → API** (never expose to the browser).
+
+## Schema (MVP core)
+
+| Table | Purpose |
+|---|---|
+| `profiles` | Person (organizer/guest) |
+| `whatsapp_identities` | Meta `wa_id` → profile |
+| `organizations` | Tenant; auto `"Personal"` org on first message |
+| `events` | Event records (draft → published → …) |
+| `whatsapp_sessions` | Conversation / AI intake state |
 
 ## Security
 
-- Enable Row Level Security (RLS) on all tenant-scoped tables.
-- Document policies alongside migrations or in ADRs under `docs/architecture/`.
+- RLS enabled on all tables.
+- WhatsApp webhook uses **service role** via `lib/supabase/admin.ts`.
+- Dashboard policies expand when auth ships.
 
-See also: [`../EventPilot_Foundation/docs/05-Database.md`](../EventPilot_Foundation/docs/05-Database.md)
+See also: [`../docs/product/06-MVP.md`](../docs/product/06-MVP.md)
