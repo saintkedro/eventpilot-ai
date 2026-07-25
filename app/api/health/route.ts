@@ -27,6 +27,7 @@ export async function GET() {
         appSecret: envPresent("WHATSAPP_APP_SECRET"),
       },
       supabaseServiceRole: envPresent("SUPABASE_SERVICE_ROLE_KEY"),
+      openai: envPresent("OPENAI_API_KEY"),
     },
   });
 }

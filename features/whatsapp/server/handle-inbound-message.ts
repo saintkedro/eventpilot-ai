@@ -1,44 +1,16 @@
 import "server-only";
 
+import { runEventIntake } from "@/features/whatsapp/server/event-intake/run-event-intake";
 import {
   resolveOrCreateWhatsAppUser,
   touchWhatsAppSessionOutbound,
 } from "@/features/whatsapp/server/resolve-or-create-user";
-import { sendTextMessage } from "@/lib/whatsapp/client";
+import { tryGetOpenAIEnv } from "@/lib/env/server";
 import { logInfo } from "@/lib/logger";
-import type { WhatsAppUserContext } from "@/features/whatsapp/server/resolve-or-create-user";
+import { sendTextMessage } from "@/lib/whatsapp/client";
 import type { InboundWhatsAppMessage } from "@/lib/whatsapp/types";
 
-function buildReply(
-  inboundText: string,
-  context: WhatsAppUserContext,
-): string {
-  const trimmed = inboundText.trim();
-
-  if (context.isNewUser && /^(hi|hello|hey|start)\b/i.test(trimmed)) {
-    return [
-      "Hi! I'm EventPilot — your event coordinator on WhatsApp.",
-      "",
-      "Tell me about the event you're planning, and I'll help you set it up.",
-    ].join("\n");
-  }
-
-  if (/^(hi|hello|hey|start)\b/i.test(trimmed)) {
-    return [
-      "Welcome back! I'm EventPilot.",
-      "",
-      "Tell me about the event you're planning, or ask me to update an existing one.",
-    ].join("\n");
-  }
-
-  return [
-    `You said: "${trimmed}"`,
-    "",
-    "I'm connected and listening. Full event setup via chat is coming next — thanks for testing!",
-  ].join("\n");
-}
-
-/** Handles a single inbound WhatsApp message (echo bot for Sprint 1). */
+/** Handles a single inbound WhatsApp message via AI event intake. */
 export async function handleInboundWhatsAppMessage(
   message: InboundWhatsAppMessage,
 ): Promise<void> {
@@ -62,11 +34,38 @@ export async function handleInboundWhatsAppMessage(
     isNewUser: context.isNewUser,
   });
 
-  const replyText =
-    message.type === "text" && message.text
-      ? buildReply(message.text, context)
-      : "Thanks for reaching out! I can read text messages for now — tell me about the event you're planning.";
+  if (message.type !== "text" || !message.text?.trim()) {
+    await sendTextMessage(
+      message.from,
+      "I can help you plan events over text for now — tell me what you're organizing!",
+    );
+    await touchWhatsAppSessionOutbound(message.from);
+    return;
+  }
 
-  await sendTextMessage(message.from, replyText);
+  const openai = tryGetOpenAIEnv();
+
+  if (!openai) {
+    await sendTextMessage(
+      message.from,
+      "EventPilot is almost ready — the AI coordinator isn't configured yet. Please add OPENAI_API_KEY and try again.",
+    );
+    await touchWhatsAppSessionOutbound(message.from);
+    return;
+  }
+
+  const result = await runEventIntake({
+    userMessage: message.text,
+    context,
+  });
+
+  if (result.eventCreated) {
+    logInfo("whatsapp.event_created", {
+      eventId: result.eventId,
+      waId: message.from,
+    });
+  }
+
+  await sendTextMessage(message.from, result.reply);
   await touchWhatsAppSessionOutbound(message.from);
 }

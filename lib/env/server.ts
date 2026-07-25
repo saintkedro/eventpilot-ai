@@ -34,3 +34,28 @@ export function getWhatsAppEnv() {
       DEFAULT_GRAPH_API_VERSION,
   } as const;
 }
+
+const DEFAULT_OPENAI_MODEL = "gpt-4o-mini";
+
+/** OpenAI credentials for conversational event intake. */
+export function getOpenAIEnv() {
+  return {
+    apiKey: requireEnv("OPENAI_API_KEY"),
+    model: process.env.OPENAI_MODEL?.trim() || DEFAULT_OPENAI_MODEL,
+  } as const;
+}
+
+/** Returns OpenAI env when configured; undefined otherwise. */
+export function tryGetOpenAIEnv():
+  | { apiKey: string; model: string }
+  | undefined {
+  const apiKey = process.env.OPENAI_API_KEY?.trim();
+  if (!apiKey) {
+    return undefined;
+  }
+
+  return {
+    apiKey,
+    model: process.env.OPENAI_MODEL?.trim() || DEFAULT_OPENAI_MODEL,
+  };
+}

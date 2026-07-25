@@ -1,0 +1,227 @@
+import "server-only";
+
+import {
+  createDraftEventFromIntake,
+  linkSessionToEvent,
+} from "@/features/whatsapp/server/event-intake/persist-event";
+import {
+  buildIntakeUserPayload,
+  EVENT_INTAKE_SYSTEM_PROMPT,
+} from "@/features/whatsapp/server/event-intake/prompts";
+import type {
+  ChatTurn,
+  IntakeModelResponse,
+  IntakeSessionState,
+} from "@/features/whatsapp/server/event-intake/types";
+import {
+  intakeStateToJson,
+  parseIntakeSessionState,
+} from "@/features/whatsapp/server/event-intake/types";
+import type { WhatsAppUserContext } from "@/features/whatsapp/server/resolve-or-create-user";
+import { createChatCompletion } from "@/lib/openai/client";
+import { logError, logInfo } from "@/lib/logger";
+import { createAdminClient } from "@/lib/supabase/admin";
+
+const GREETING_PATTERN = /^(hi|hello|hey|start)\b/i;
+
+type RunEventIntakeInput = {
+  userMessage: string;
+  context: WhatsAppUserContext;
+};
+
+type RunEventIntakeResult = {
+  reply: string;
+  state: IntakeSessionState;
+  eventCreated: boolean;
+  eventId?: string;
+};
+
+function welcomeMessage(isNewUser: boolean): string {
+  if (isNewUser) {
+    return [
+      "Hi! I'm EventPilot — your event coordinator on WhatsApp.",
+      "",
+      "Tell me about the event you're planning (e.g. \"Birthday party for my son on August 15 at 2pm\").",
+    ].join("\n");
+  }
+
+  return [
+    "Welcome back! I'm EventPilot.",
+    "",
+    "Tell me about the event you're planning, or share updates to your current draft.",
+  ].join("\n");
+}
+
+function parseModelResponse(raw: string): IntakeModelResponse {
+  const parsed = JSON.parse(raw) as Partial<IntakeModelResponse>;
+
+  if (!parsed.reply || typeof parsed.reply !== "string") {
+    throw new Error("OpenAI response missing reply");
+  }
+
+  return {
+    reply: parsed.reply.trim(),
+    draft: parsed.draft ?? {},
+    ready_to_create: Boolean(parsed.ready_to_create),
+    missing_fields: Array.isArray(parsed.missing_fields)
+      ? parsed.missing_fields.filter((field): field is string => typeof field === "string")
+      : [],
+  };
+}
+
+function mergeDraft(
+  current: IntakeSessionState["draft"],
+  incoming: IntakeSessionState["draft"],
+): IntakeSessionState["draft"] {
+  return {
+    title: incoming.title ?? current.title,
+    description: incoming.description ?? current.description,
+    starts_at: incoming.starts_at ?? current.starts_at,
+    ends_at: incoming.ends_at ?? current.ends_at,
+    timezone: incoming.timezone ?? current.timezone,
+    venue_name: incoming.venue_name ?? current.venue_name,
+    venue_address: incoming.venue_address ?? current.venue_address,
+    capacity: incoming.capacity ?? current.capacity,
+  };
+}
+
+function appendHistory(
+  state: IntakeSessionState,
+  userMessage: string,
+  assistantReply: string,
+): IntakeSessionState["history"] {
+  const userTurn: ChatTurn = { role: "user", content: userMessage };
+  const assistantTurn: ChatTurn = { role: "assistant", content: assistantReply };
+
+  return [...state.history, userTurn, assistantTurn].slice(-12);
+}
+
+async function saveSessionState(
+  sessionId: string,
+  state: IntakeSessionState,
+): Promise<void> {
+  const supabase = createAdminClient();
+
+  const { error } = await supabase
+    .from("whatsapp_sessions")
+    .update({ state: intakeStateToJson(state) })
+    .eq("id", sessionId);
+
+  if (error) {
+    throw new Error(`Session state update failed: ${error.message}`);
+  }
+}
+
+/** Runs conversational event intake for a WhatsApp text message. */
+export async function runEventIntake(
+  input: RunEventIntakeInput,
+): Promise<RunEventIntakeResult> {
+  const { userMessage, context } = input;
+  const trimmed = userMessage.trim();
+  let state = parseIntakeSessionState(context.session.state);
+
+  if (GREETING_PATTERN.test(trimmed) && state.step === "idle") {
+    const reply = welcomeMessage(context.isNewUser);
+    state = {
+      ...state,
+      step: "intake",
+      history: appendHistory(state, trimmed, reply),
+    };
+
+    await saveSessionState(context.session.id, state);
+
+    return { reply, state, eventCreated: false };
+  }
+
+  if (state.step === "event_created" && GREETING_PATTERN.test(trimmed)) {
+    const reply = welcomeMessage(false);
+    state = {
+      step: "intake",
+      draft: {},
+      history: [{ role: "assistant", content: reply }],
+    };
+    await saveSessionState(context.session.id, state);
+    return { reply, state, eventCreated: false };
+  }
+
+  const completion = await createChatCompletion([
+    { role: "system", content: EVENT_INTAKE_SYSTEM_PROMPT },
+    ...state.history.map((turn) => ({
+      role: turn.role,
+      content: turn.content,
+    })),
+    {
+      role: "user",
+      content: buildIntakeUserPayload(trimmed, state.draft),
+    },
+  ]);
+
+  let model: IntakeModelResponse;
+
+  try {
+    model = parseModelResponse(completion.content);
+  } catch (error) {
+    logError("event_intake.parse_failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw new Error("Failed to parse AI intake response");
+  }
+
+  const mergedDraft = mergeDraft(state.draft, model.draft);
+  let reply = model.reply;
+  let eventCreated = false;
+  let eventId: string | undefined;
+
+  state = {
+    step: "intake",
+    draft: mergedDraft,
+    history: appendHistory(state, trimmed, reply),
+  };
+
+  const canCreate =
+    model.ready_to_create &&
+    Boolean(mergedDraft.title?.trim()) &&
+    Boolean(mergedDraft.starts_at?.trim());
+
+  if (canCreate) {
+    const event = await createDraftEventFromIntake({
+      organizationId: context.organization.id,
+      profileId: context.profile.id,
+      draft: mergedDraft,
+    });
+
+    eventId = event.id;
+    eventCreated = true;
+    state.step = "event_created";
+    state.draft = mergedDraft;
+
+    await linkSessionToEvent(context.session.wa_id, event.id);
+
+    reply = [
+      model.reply,
+      "",
+      `✅ Draft event created: *${event.title}*`,
+      `📅 ${event.starts_at ?? "Date TBD"}`,
+      event.venue_name ? `📍 ${event.venue_name}` : "",
+      "",
+      "You can keep refining details here, or ask me to publish when you're ready.",
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    state.history[state.history.length - 1] = {
+      role: "assistant",
+      content: reply,
+    };
+
+    logInfo("event_intake.completed", {
+      eventId: event.id,
+      profileId: context.profile.id,
+      waId: context.session.wa_id,
+    });
+  }
+
+  await saveSessionState(context.session.id, state);
+
+  return { reply, state, eventCreated, eventId };
+}

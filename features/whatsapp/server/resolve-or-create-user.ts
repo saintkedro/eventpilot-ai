@@ -6,6 +6,10 @@ import {
 } from "@/features/whatsapp/server/phone-utils";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logInfo } from "@/lib/logger";
+import {
+  emptyIntakeState,
+  intakeStateToJson,
+} from "@/features/whatsapp/server/event-intake/types";
 import type { Tables } from "@/types/database";
 
 export type WhatsAppUserContext = {
@@ -81,7 +85,7 @@ async function loadExistingUserContext(
         profile_id: profileId,
         wa_id: waId,
         last_inbound_at: inboundAt,
-        state: { step: "welcome" },
+        state: intakeStateToJson(emptyIntakeState()),
       })
       .select("*")
       .single();
@@ -164,7 +168,7 @@ async function createNewUserContext(
       profile_id: profile.id,
       wa_id: waId,
       last_inbound_at: inboundAt,
-      state: { step: "welcome" },
+      state: intakeStateToJson(emptyIntakeState()),
     })
     .select("*")
     .single();
