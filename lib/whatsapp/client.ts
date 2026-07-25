@@ -53,7 +53,9 @@ export async function sendTextMessage(
       hint:
         metaCode === 131030
           ? "Add your phone to Meta test recipient list (Try it out → manage phone numbers)"
-          : undefined,
+          : metaCode === 131005
+            ? "Token lacks whatsapp_business_messaging — regenerate in Meta API Setup or use System User token"
+            : undefined,
     });
     throw new Error(
       metaMessage

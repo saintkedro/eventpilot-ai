@@ -43,8 +43,11 @@ export async function GET(request: Request) {
       : null;
 
     const status = credentials.ok
-      ? deepCredentials && deepCredentials.issues.length > 0
-        ? "webhook_misconfigured"
+      ? deepCredentials &&
+          (deepCredentials.issues.length > 0 || !deepCredentials.canSendMessages)
+        ? deepCredentials.canSendMessages === false
+          ? "cannot_send_messages"
+          : "webhook_misconfigured"
         : "ok"
       : "token_invalid";
 
@@ -65,6 +68,8 @@ export async function GET(request: Request) {
         commonErrors: {
           "131030":
             "Recipient not on Meta test list — add your phone in API Setup / Try it out",
+          "131005":
+            "Token lacks whatsapp_business_messaging — regenerate token with send permission, update Vercel",
           "190": "Access token expired — regenerate in Meta API Setup and update Vercel",
           signature_invalid:
             "WHATSAPP_APP_SECRET mismatch between Vercel and Meta app",
