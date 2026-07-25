@@ -1,4 +1,5 @@
 import { getWhatsAppEnv } from "@/lib/env/server";
+import { logError } from "@/lib/logger";
 
 type SendTextMessageResult = {
   messageId?: string;
@@ -31,6 +32,10 @@ export async function sendTextMessage(
 
   if (!response.ok) {
     const errorBody = await response.text();
+    logError("whatsapp.send_failed", {
+      status: response.status,
+      error: errorBody,
+    });
     throw new Error(
       `WhatsApp send failed (${response.status}): ${errorBody}`,
     );

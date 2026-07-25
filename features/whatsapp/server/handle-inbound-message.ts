@@ -1,6 +1,7 @@
 import "server-only";
 
 import { sendTextMessage } from "@/lib/whatsapp/client";
+import { logInfo } from "@/lib/logger";
 import type { InboundWhatsAppMessage } from "@/lib/whatsapp/types";
 
 function buildReply(inboundText: string): string {
@@ -25,6 +26,12 @@ function buildReply(inboundText: string): string {
 export async function handleInboundWhatsAppMessage(
   message: InboundWhatsAppMessage,
 ): Promise<void> {
+  logInfo("whatsapp.inbound", {
+    from: message.from,
+    type: message.type,
+    messageId: message.messageId,
+  });
+
   if (message.type === "text" && message.text) {
     await sendTextMessage(message.from, buildReply(message.text));
     return;

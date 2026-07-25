@@ -30,6 +30,7 @@ export type WhatsAppWebhookValue = {
     phone_number_id?: string;
   };
   messages?: WhatsAppWebhookMessage[];
+  statuses?: WhatsAppWebhookStatus[];
 };
 
 export type WhatsAppWebhookMessage = {
@@ -40,4 +41,11 @@ export type WhatsAppWebhookMessage = {
   text?: {
     body?: string;
   };
+};
+
+export type WhatsAppWebhookStatus = {
+  id: string;
+  status: string;
+  timestamp: string;
+  recipient_id?: string;
 };
