@@ -1,12 +1,13 @@
 import "server-only";
 
 import { runEventIntake } from "@/features/whatsapp/server/event-intake/run-event-intake";
+import { loadIntakeSessionState } from "@/features/whatsapp/server/event-intake/load-session-state";
 import {
   resolveOrCreateWhatsAppUser,
   touchWhatsAppSessionOutbound,
 } from "@/features/whatsapp/server/resolve-or-create-user";
 import { tryGetOpenAIEnv } from "@/lib/env/server";
-import { logInfo } from "@/lib/logger";
+import { logError, logInfo } from "@/lib/logger";
 import { sendTextMessage } from "@/lib/whatsapp/client";
 import type { InboundWhatsAppMessage } from "@/lib/whatsapp/types";
 
@@ -54,18 +55,39 @@ export async function handleInboundWhatsAppMessage(
     return;
   }
 
-  const result = await runEventIntake({
-    userMessage: message.text,
-    context,
-  });
+  try {
+    const trimmed = message.text.trim();
+    const isGreeting = /^(hi|hello|hey|start)\b/i.test(trimmed);
+    const sessionState = await loadIntakeSessionState(context.session.id);
+    const needsAi = !isGreeting || sessionState.step !== "idle";
 
-  if (result.eventCreated) {
-    logInfo("whatsapp.event_created", {
-      eventId: result.eventId,
-      waId: message.from,
+    // OpenAI can take 10–15s — ack first so the user knows we received the message.
+    if (needsAi) {
+      await sendTextMessage(message.from, "Got it — one moment…");
+    }
+
+    const result = await runEventIntake({
+      userMessage: message.text,
+      context,
     });
-  }
 
-  await sendTextMessage(message.from, result.reply);
-  await touchWhatsAppSessionOutbound(message.from);
+    if (result.eventCreated) {
+      logInfo("whatsapp.event_created", {
+        eventId: result.eventId,
+        waId: message.from,
+      });
+    }
+
+    await sendTextMessage(message.from, result.reply);
+    await touchWhatsAppSessionOutbound(message.from);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    logError("event_intake.failed", { reason, waId: message.from });
+
+    await sendTextMessage(
+      message.from,
+      "Sorry — I hit a snag processing that. Please try again in a moment, or send Hi to start over.",
+    );
+    await touchWhatsAppSessionOutbound(message.from);
+  }
 }

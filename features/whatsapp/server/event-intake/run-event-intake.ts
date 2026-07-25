@@ -15,11 +15,11 @@ import type {
 } from "@/features/whatsapp/server/event-intake/types";
 import {
   intakeStateToJson,
-  parseIntakeSessionState,
 } from "@/features/whatsapp/server/event-intake/types";
 import type { WhatsAppUserContext } from "@/features/whatsapp/server/resolve-or-create-user";
 import { createChatCompletion } from "@/lib/openai/client";
 import { logError, logInfo } from "@/lib/logger";
+import { loadIntakeSessionState } from "@/features/whatsapp/server/event-intake/load-session-state";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 const GREETING_PATTERN = /^(hi|hello|hey|start)\b/i;
@@ -118,7 +118,13 @@ export async function runEventIntake(
 ): Promise<RunEventIntakeResult> {
   const { userMessage, context } = input;
   const trimmed = userMessage.trim();
-  let state = parseIntakeSessionState(context.session.state);
+  let state = await loadIntakeSessionState(context.session.id);
+
+  logInfo("event_intake.start", {
+    sessionId: context.session.id,
+    step: state.step,
+    historyLength: state.history.length,
+  });
 
   if (GREETING_PATTERN.test(trimmed) && state.step === "idle") {
     const reply = welcomeMessage(context.isNewUser);

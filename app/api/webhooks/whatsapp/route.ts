@@ -9,6 +9,7 @@ import { summarizeWebhookPayload } from "@/lib/whatsapp/summarize-webhook";
 import { verifyWhatsAppSignature } from "@/lib/whatsapp/verify-signature";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 /** Meta webhook verification (subscribe challenge). */
 export async function GET(request: NextRequest) {
