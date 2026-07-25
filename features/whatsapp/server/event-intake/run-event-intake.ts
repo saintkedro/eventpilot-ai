@@ -1,8 +1,10 @@
 import "server-only";
 
 import {
+  clearSessionActiveEvent,
   createDraftEventFromIntake,
   linkSessionToEvent,
+  updateDraftEventFromIntake,
 } from "@/features/whatsapp/server/event-intake/persist-event";
 import {
   buildIntakeUserPayload,
@@ -150,6 +152,7 @@ export async function runEventIntake(
       draft: {},
       history: [{ role: "assistant", content: reply }],
     };
+    await clearSessionActiveEvent(context.session.wa_id);
     await saveSessionState(context.session.id, state);
     return { reply, state, eventCreated: false };
   }
@@ -192,6 +195,8 @@ export async function runEventIntake(
   let reply = model.reply;
   let eventCreated = false;
   let eventId: string | undefined;
+  const previousStep = state.step;
+  const activeEventId = context.session.active_event_id;
 
   state = {
     step: "intake",
@@ -205,37 +210,63 @@ export async function runEventIntake(
     (model.ready_to_create || dateResolvedByServer);
 
   if (canCreate) {
-    const event = await createDraftEventFromIntake({
-      organizationId: context.organization.id,
-      profileId: context.profile.id,
-      draft: mergedDraft,
-    });
+    let event;
+    let eventUpdated = false;
+
+    if (activeEventId || previousStep === "event_created") {
+      const targetEventId = activeEventId;
+
+      if (!targetEventId) {
+        throw new Error("Active event missing for update");
+      }
+
+      event = await updateDraftEventFromIntake(targetEventId, mergedDraft);
+      eventUpdated = true;
+    } else {
+      event = await createDraftEventFromIntake({
+        organizationId: context.organization.id,
+        profileId: context.profile.id,
+        draft: mergedDraft,
+      });
+
+      await linkSessionToEvent(context.session.wa_id, event.id);
+    }
 
     eventId = event.id;
-    eventCreated = true;
+    eventCreated = !eventUpdated;
     state.step = "event_created";
     state.draft = mergedDraft;
 
-    await linkSessionToEvent(context.session.wa_id, event.id);
-
-    reply = [
-      model.reply,
-      "",
-      `✅ Draft event created: *${event.title}*`,
-      `📅 ${event.starts_at ?? "Date TBD"}`,
-      event.venue_name ? `📍 ${event.venue_name}` : "",
-      "",
-      "You can keep refining details here, or ask me to publish when you're ready.",
-    ]
-      .filter(Boolean)
-      .join("\n");
+    reply = eventUpdated
+      ? [
+          model.reply,
+          "",
+          `✅ Updated *${event.title}*`,
+          `📅 ${event.starts_at ?? "Date TBD"}`,
+          event.venue_name ? `📍 ${event.venue_name}` : "",
+          "",
+          "Keep refining here, or ask me to publish when you're ready.",
+        ]
+          .filter(Boolean)
+          .join("\n")
+      : [
+          model.reply,
+          "",
+          `✅ Draft event created: *${event.title}*`,
+          `📅 ${event.starts_at ?? "Date TBD"}`,
+          event.venue_name ? `📍 ${event.venue_name}` : "",
+          "",
+          "You can keep refining details here, or ask me to publish when you're ready.",
+        ]
+          .filter(Boolean)
+          .join("\n");
 
     state.history[state.history.length - 1] = {
       role: "assistant",
       content: reply,
     };
 
-    logInfo("event_intake.completed", {
+    logInfo(eventUpdated ? "event_intake.updated" : "event_intake.completed", {
       eventId: event.id,
       profileId: context.profile.id,
       waId: context.session.wa_id,
