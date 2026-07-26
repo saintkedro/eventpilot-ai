@@ -14,6 +14,7 @@ import {
   DEFAULT_TIMEZONE,
   enrichDraftDates,
 } from "@/features/whatsapp/server/event-intake/resolve-relative-date";
+import { formatEventDateTimeForWhatsApp } from "@/features/whatsapp/server/event-intake/format-event-datetime";
 import type {
   ChatTurn,
   IntakeModelResponse,
@@ -237,12 +238,18 @@ export async function runEventIntake(
     state.step = "event_created";
     state.draft = mergedDraft;
 
+    const { date: eventDate, time: eventTime } = formatEventDateTimeForWhatsApp(
+      event.starts_at,
+      event.timezone ?? DEFAULT_TIMEZONE,
+    );
+
     reply = eventUpdated
       ? [
           model.reply,
           "",
           `✅ Updated *${event.title}*`,
-          `📅 ${event.starts_at ?? "Date TBD"}`,
+          `📅 ${eventDate}`,
+          `🕐 ${eventTime}`,
           event.venue_name ? `📍 ${event.venue_name}` : "",
           "",
           "Keep refining here, or ask me to publish when you're ready.",
@@ -253,7 +260,8 @@ export async function runEventIntake(
           model.reply,
           "",
           `✅ Draft event created: *${event.title}*`,
-          `📅 ${event.starts_at ?? "Date TBD"}`,
+          `📅 ${eventDate}`,
+          `🕐 ${eventTime}`,
           event.venue_name ? `📍 ${event.venue_name}` : "",
           "",
           "You can keep refining details here, or ask me to publish when you're ready.",
