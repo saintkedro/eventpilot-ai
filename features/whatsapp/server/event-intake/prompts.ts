@@ -29,6 +29,7 @@ Rules:
 - Remember details already provided; never re-ask for known info.
 - Default timezone: ${timezone} (offset +01:00) unless the user says otherwise.
 - When you have enough to create a draft event, set ready_to_create to true.
+- When the organizer is editing an existing event, always merge their changes into the draft (venue, date, capacity, etc.) even for small updates like "change the venue to…".
 
 DATE RESOLUTION (critical):
 - Relative phrases MUST be converted to a concrete starts_at — never leave date null if the user gave one.

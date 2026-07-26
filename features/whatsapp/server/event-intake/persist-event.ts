@@ -117,6 +117,23 @@ export async function updateDraftEventFromIntake(
 
   const supabase = createAdminClient();
 
+  const { data: existing, error: loadError } = await supabase
+    .from("events")
+    .select("metadata")
+    .eq("id", eventId)
+    .single();
+
+  if (loadError || !existing) {
+    throw new Error(`Event load failed: ${loadError?.message ?? "not found"}`);
+  }
+
+  const priorMetadata =
+    existing.metadata &&
+    typeof existing.metadata === "object" &&
+    !Array.isArray(existing.metadata)
+      ? existing.metadata
+      : {};
+
   const { data: event, error } = await supabase
     .from("events")
     .update({
@@ -129,6 +146,7 @@ export async function updateDraftEventFromIntake(
       venue_address: draft.venue_address?.trim() || null,
       capacity: draft.capacity ?? null,
       metadata: {
+        ...priorMetadata,
         source: "whatsapp_intake",
         intake_updated_at: new Date().toISOString(),
       },

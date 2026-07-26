@@ -1,5 +1,6 @@
 import "server-only";
 
+import { buildEventSyncReply } from "@/features/events/server/build-event-sync-reply";
 import {
   clearSessionActiveEvent,
   createDraftEventFromIntake,
@@ -196,7 +197,6 @@ export async function runEventIntake(
   let reply = model.reply;
   let eventCreated = false;
   let eventId: string | undefined;
-  const previousStep = state.step;
   const activeEventId = context.session.active_event_id;
 
   state = {
@@ -205,36 +205,46 @@ export async function runEventIntake(
     history: appendHistory(state, trimmed, reply),
   };
 
-  const canCreate =
-    Boolean(mergedDraft.title?.trim()) &&
-    Boolean(mergedDraft.starts_at?.trim()) &&
+  const hasCoreFields =
+    Boolean(mergedDraft.title?.trim()) && Boolean(mergedDraft.starts_at?.trim());
+
+  const shouldCreateNew =
+    hasCoreFields &&
+    !activeEventId &&
     (model.ready_to_create || dateResolvedByServer);
 
-  if (canCreate) {
-    let event;
-    let eventUpdated = false;
+  const shouldSyncExisting = hasCoreFields && Boolean(activeEventId);
 
-    if (activeEventId || previousStep === "event_created") {
-      const targetEventId = activeEventId;
-
-      if (!targetEventId) {
-        throw new Error("Active event missing for update");
-      }
-
-      event = await updateDraftEventFromIntake(targetEventId, mergedDraft);
-      eventUpdated = true;
-    } else {
-      event = await createDraftEventFromIntake({
-        organizationId: context.organization.id,
-        profileId: context.profile.id,
-        draft: mergedDraft,
-      });
-
-      await linkSessionToEvent(context.session.wa_id, event.id);
-    }
+  if (shouldSyncExisting && activeEventId) {
+    const event = await updateDraftEventFromIntake(activeEventId, mergedDraft);
 
     eventId = event.id;
-    eventCreated = !eventUpdated;
+    state.step = "event_created";
+    state.draft = mergedDraft;
+    reply = buildEventSyncReply(event, model.reply);
+
+    state.history[state.history.length - 1] = {
+      role: "assistant",
+      content: reply,
+    };
+
+    logInfo("event_intake.updated", {
+      eventId: event.id,
+      profileId: context.profile.id,
+      waId: context.session.wa_id,
+      published: event.status === "published",
+    });
+  } else if (shouldCreateNew) {
+    const event = await createDraftEventFromIntake({
+      organizationId: context.organization.id,
+      profileId: context.profile.id,
+      draft: mergedDraft,
+    });
+
+    await linkSessionToEvent(context.session.wa_id, event.id);
+
+    eventId = event.id;
+    eventCreated = true;
     state.step = "event_created";
     state.draft = mergedDraft;
 
@@ -243,38 +253,25 @@ export async function runEventIntake(
       event.timezone ?? DEFAULT_TIMEZONE,
     );
 
-    reply = eventUpdated
-      ? [
-          model.reply,
-          "",
-          `✅ Updated *${event.title}*`,
-          `📅 ${eventDate}`,
-          `🕐 ${eventTime}`,
-          event.venue_name ? `📍 ${event.venue_name}` : "",
-          "",
-          "Keep refining here, or ask me to publish when you're ready.",
-        ]
-          .filter(Boolean)
-          .join("\n")
-      : [
-          model.reply,
-          "",
-          `✅ Draft event created: *${event.title}*`,
-          `📅 ${eventDate}`,
-          `🕐 ${eventTime}`,
-          event.venue_name ? `📍 ${event.venue_name}` : "",
-          "",
-          "You can keep refining details here, or ask me to publish when you're ready.",
-        ]
-          .filter(Boolean)
-          .join("\n");
+    reply = [
+      model.reply,
+      "",
+      `✅ Draft event created: *${event.title}*`,
+      `📅 ${eventDate}`,
+      `🕐 ${eventTime}`,
+      event.venue_name ? `📍 ${event.venue_name}` : "",
+      "",
+      "You can keep refining details here, or ask me to publish when you're ready.",
+    ]
+      .filter(Boolean)
+      .join("\n");
 
     state.history[state.history.length - 1] = {
       role: "assistant",
       content: reply,
     };
 
-    logInfo(eventUpdated ? "event_intake.updated" : "event_intake.completed", {
+    logInfo("event_intake.completed", {
       eventId: event.id,
       profileId: context.profile.id,
       waId: context.session.wa_id,
