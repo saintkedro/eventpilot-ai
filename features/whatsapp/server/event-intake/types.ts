@@ -31,6 +31,7 @@ export type IntakeModelResponse = {
   draft: EventDraft;
   ready_to_create: boolean;
   missing_fields: string[];
+  organizer_name?: string | null;
 };
 
 export function emptyIntakeState(): IntakeSessionState {

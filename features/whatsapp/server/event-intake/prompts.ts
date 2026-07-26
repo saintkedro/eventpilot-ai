@@ -30,6 +30,7 @@ Rules:
 - Default timezone: ${timezone} (offset +01:00) unless the user says otherwise.
 - When you have enough to create a draft event, set ready_to_create to true.
 - When the organizer is editing an existing event, always merge their changes into the draft (venue, date, capacity, etc.) even for small updates like "change the venue to…".
+- If the user shares their personal name (e.g. "I'm Ada", "my name is Kingsley"), set organizer_name in your JSON response.
 
 DATE RESOLUTION (critical):
 - Relative phrases MUST be converted to a concrete starts_at — never leave date null if the user gave one.
@@ -58,7 +59,8 @@ Always respond with valid JSON only, matching this schema:
     "capacity": "number | null"
   },
   "ready_to_create": boolean,
-  "missing_fields": ["string"]
+  "missing_fields": ["string"],
+  "organizer_name": "string | null — organizer's personal name if they shared it"
 }
 
 Merge new user input into the draft. Preserve previously collected draft fields unless the user corrects them.`;

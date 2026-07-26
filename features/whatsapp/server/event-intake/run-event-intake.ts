@@ -1,6 +1,7 @@
 import "server-only";
 
 import { buildEventSyncReply } from "@/features/events/server/build-event-sync-reply";
+import { updateProfileDisplayName } from "@/features/profiles/server/update-display-name";
 import {
   clearSessionActiveEvent,
   createDraftEventFromIntake,
@@ -74,6 +75,8 @@ function parseModelResponse(raw: string): IntakeModelResponse {
     missing_fields: Array.isArray(parsed.missing_fields)
       ? parsed.missing_fields.filter((field): field is string => typeof field === "string")
       : [],
+    organizer_name:
+      typeof parsed.organizer_name === "string" ? parsed.organizer_name.trim() : null,
   };
 }
 
@@ -182,6 +185,17 @@ export async function runEventIntake(
       error: error instanceof Error ? error.message : String(error),
     });
     throw new Error("Failed to parse AI intake response");
+  }
+
+  if (model.organizer_name && !context.profile.display_name?.trim()) {
+    try {
+      await updateProfileDisplayName(context.profile.id, model.organizer_name);
+    } catch (error) {
+      logError("profile.display_name_update_failed", {
+        profileId: context.profile.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   const aiDraft = mergeDraft(state.draft, model.draft);

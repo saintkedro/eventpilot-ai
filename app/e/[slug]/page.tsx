@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
+import { EventOrganizerSection } from "@/features/events/components/event-organizer-section";
+import { EventPilotFooter } from "@/features/events/components/eventpilot-footer";
 import { RsvpForm } from "@/features/events/components/rsvp-form";
-import { getPublishedEventBySlug } from "@/features/events/server/get-published-event-by-slug";
+import { getPublishedEventWithOrganizer } from "@/features/events/server/get-published-event-with-organizer";
 import {
   formatEventDateForWhatsApp,
   formatEventTimeForWhatsApp,
@@ -18,26 +20,28 @@ export async function generateMetadata({
   params,
 }: PublicEventPageProps): Promise<Metadata> {
   const { slug } = await params;
-  const event = await getPublishedEventBySlug(slug);
+  const result = await getPublishedEventWithOrganizer(slug);
 
-  if (!event?.title) {
+  if (!result?.event.title) {
     return { title: "Event not found · EventPilot" };
   }
 
   return {
-    title: `${event.title} · EventPilot`,
-    description: event.description ?? `Event details for ${event.title}`,
+    title: `${result.event.title} · EventPilot`,
+    description:
+      result.event.description ?? `Event details for ${result.event.title}`,
   };
 }
 
 export default async function PublicEventPage({ params }: PublicEventPageProps) {
   const { slug } = await params;
-  const event = await getPublishedEventBySlug(slug);
+  const result = await getPublishedEventWithOrganizer(slug);
 
-  if (!event) {
+  if (!result) {
     notFound();
   }
 
+  const { event, organizer } = result;
   const timezone = event.timezone ?? "Africa/Lagos";
   const dateLabel = formatEventDateForWhatsApp(event.starts_at, timezone);
   const timeLabel = formatEventTimeForWhatsApp(event.starts_at, timezone);
@@ -101,9 +105,13 @@ export default async function PublicEventPage({ params }: PublicEventPageProps) 
         ) : null}
       </section>
 
+      <EventOrganizerSection name={organizer.name} phone={organizer.phone} />
+
       {event.public_slug ? (
         <RsvpForm publicSlug={event.public_slug} capacity={event.capacity} />
       ) : null}
+
+      <EventPilotFooter />
     </main>
   );
 }
