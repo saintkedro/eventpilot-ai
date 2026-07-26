@@ -75,6 +75,12 @@ export type SubmitRsvpResult =
   | { ok: true; message: string }
   | { ok: false; message: string };
 
+export function isRsvpValidationError(
+  value: SubmitRsvpInput | SubmitRsvpResult,
+): value is SubmitRsvpResult {
+  return "ok" in value && value.ok === false;
+}
+
 function normalizePhone(value: string | null | undefined): string | null {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
@@ -139,7 +145,9 @@ export async function submitEventRsvp(
 }
 
 /** Parses and validates RSVP form data from a server action. */
-export function parseRsvpFormData(formData: FormData): SubmitRsvpInput | SubmitRsvpResult {
+export function parseRsvpFormData(
+  formData: FormData,
+): SubmitRsvpInput | SubmitRsvpResult {
   const publicSlug = String(formData.get("publicSlug") ?? "").trim();
   const guestName = String(formData.get("guestName") ?? "");
   const guestPhone = String(formData.get("guestPhone") ?? "");
@@ -147,6 +155,10 @@ export function parseRsvpFormData(formData: FormData): SubmitRsvpInput | SubmitR
 
   if (!publicSlug) {
     return { ok: false, message: "Invalid event." };
+  }
+
+  if (!guestName.trim()) {
+    return { ok: false, message: "Please enter your name." };
   }
 
   if (!isRsvpStatus(status)) {

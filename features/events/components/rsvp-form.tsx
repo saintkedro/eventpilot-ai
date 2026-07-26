@@ -1,29 +1,45 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useRef } from "react";
 
 import {
   rsvpFormInitialState,
   submitEventRsvpAction,
   type RsvpFormState,
 } from "@/features/events/actions/submit-rsvp";
+import type { RsvpStatus } from "@/types/database";
 
 type RsvpFormProps = {
   publicSlug: string;
   capacity: number | null;
 };
 
-const STATUS_BUTTONS = [
+const STATUS_BUTTONS: Array<{ status: RsvpStatus; label: string; className: string }> = [
   { status: "yes", label: "Yes", className: "bg-emerald-600 hover:bg-emerald-700 text-white" },
   { status: "maybe", label: "Maybe", className: "bg-amber-500 hover:bg-amber-600 text-white" },
   { status: "no", label: "No", className: "bg-zinc-600 hover:bg-zinc-700 text-white" },
-] as const;
+];
 
 export function RsvpForm({ publicSlug, capacity }: RsvpFormProps) {
+  const formRef = useRef<HTMLFormElement>(null);
+  const statusRef = useRef<HTMLInputElement>(null);
+
   const [state, formAction, pending] = useActionState<RsvpFormState, FormData>(
     submitEventRsvpAction,
     rsvpFormInitialState,
   );
+
+  function submitWithStatus(status: RsvpStatus) {
+    if (!formRef.current) {
+      return;
+    }
+
+    if (statusRef.current) {
+      statusRef.current.value = status;
+    }
+
+    formRef.current.requestSubmit();
+  }
 
   if (state.ok) {
     return (
@@ -44,8 +60,9 @@ export function RsvpForm({ publicSlug, capacity }: RsvpFormProps) {
         {capacity ? ` (${capacity} spots)` : ""}
       </p>
 
-      <form action={formAction} className="mt-5 space-y-4">
+      <form ref={formRef} action={formAction} className="mt-5 space-y-4">
         <input type="hidden" name="publicSlug" value={publicSlug} />
+        <input ref={statusRef} type="hidden" name="status" defaultValue="" />
 
         <div>
           <label
@@ -96,10 +113,9 @@ export function RsvpForm({ publicSlug, capacity }: RsvpFormProps) {
           {STATUS_BUTTONS.map(({ status, label, className }) => (
             <button
               key={status}
-              type="submit"
-              name="status"
-              value={status}
+              type="button"
               disabled={pending}
+              onClick={() => submitWithStatus(status)}
               className={`rounded-lg px-3 py-2.5 text-sm font-medium transition disabled:opacity-60 ${className}`}
             >
               {label}

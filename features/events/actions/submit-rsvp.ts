@@ -1,9 +1,11 @@
 "use server";
 
 import {
+  isRsvpValidationError,
   parseRsvpFormData,
   submitEventRsvp,
 } from "@/features/events/server/rsvp";
+import { logError } from "@/lib/logger";
 
 export type RsvpFormState = {
   ok: boolean;
@@ -18,13 +20,30 @@ export async function submitEventRsvpAction(
 ): Promise<RsvpFormState> {
   const parsed = parseRsvpFormData(formData);
 
-  if ("ok" in parsed) {
+  if (isRsvpValidationError(parsed)) {
     return parsed;
   }
 
   try {
     return await submitEventRsvp(parsed);
-  } catch {
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    logError("rsvp.submit_failed", { reason });
+
+    if (reason.includes("event_rsvps") || reason.includes("does not exist")) {
+      return {
+        ok: false,
+        message: "RSVP is not set up yet. The organizer needs to enable RSVPs for this event.",
+      };
+    }
+
+    if (reason.includes("SUPABASE_SERVICE_ROLE_KEY")) {
+      return {
+        ok: false,
+        message: "RSVP is temporarily unavailable. Please try again later.",
+      };
+    }
+
     return {
       ok: false,
       message: "Something went wrong. Please try again.",
