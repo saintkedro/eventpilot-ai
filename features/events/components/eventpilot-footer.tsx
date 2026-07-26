@@ -1,10 +1,7 @@
-import Link from "next/link";
-
-import { getEventPilotWhatsAppUrl, getMarketingHomeUrl } from "@/lib/env/marketing";
+import { getEventPilotWhatsAppUrl } from "@/lib/env/marketing";
 
 export function EventPilotFooter() {
-  const homeUrl = getMarketingHomeUrl();
-  const whatsappUrl = getEventPilotWhatsAppUrl();
+  const whatsappHiUrl = getEventPilotWhatsAppUrl("Hi");
 
   return (
     <footer className="mt-12 border-t border-zinc-200 pt-8 dark:border-zinc-800">
@@ -18,24 +15,16 @@ export function EventPilotFooter() {
         Create and manage any event — no app required.
       </p>
 
-      <div className="mt-4 flex flex-wrap gap-3 text-sm">
-        <Link
-          href={homeUrl}
-          className="font-medium text-emerald-700 hover:underline dark:text-emerald-400"
+      {whatsappHiUrl ? (
+        <a
+          href={whatsappHiUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-4 inline-block text-sm font-medium text-emerald-700 hover:underline dark:text-emerald-400"
         >
-          Visit EventPilot
-        </Link>
-        {whatsappUrl ? (
-          <a
-            href={whatsappUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="font-medium text-emerald-700 hover:underline dark:text-emerald-400"
-          >
-            Message on WhatsApp
-          </a>
-        ) : null}
-      </div>
+          Say Hi to EventPilot
+        </a>
+      ) : null}
     </footer>
   );
 }
