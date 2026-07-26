@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
+import { RsvpForm } from "@/features/events/components/rsvp-form";
 import { getPublishedEventBySlug } from "@/features/events/server/get-published-event-by-slug";
 import {
   formatEventDateForWhatsApp,
@@ -98,14 +99,9 @@ export default async function PublicEventPage({ params }: PublicEventPageProps) 
         ) : null}
       </section>
 
-      <section className="mt-8 rounded-2xl border border-dashed border-zinc-300 p-6 text-center dark:border-zinc-700">
-        <p className="text-sm font-medium text-zinc-700 dark:text-zinc-200">
-          RSVP coming soon
-        </p>
-        <p className="mt-2 text-sm text-zinc-500">
-          Guest registration will be available here and via WhatsApp.
-        </p>
-      </section>
+      {event.public_slug ? (
+        <RsvpForm publicSlug={event.public_slug} capacity={event.capacity} />
+      ) : null}
     </main>
   );
 }

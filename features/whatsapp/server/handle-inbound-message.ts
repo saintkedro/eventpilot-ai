@@ -1,8 +1,10 @@
 import "server-only";
 
 import { isPublishIntent } from "@/features/whatsapp/server/detect-publish-intent";
+import { isRsvpQueryIntent } from "@/features/whatsapp/server/detect-rsvp-query-intent";
 import { runEventIntake } from "@/features/whatsapp/server/event-intake/run-event-intake";
 import { handlePublishEvent } from "@/features/whatsapp/server/publish-event";
+import { handleRsvpQuery } from "@/features/whatsapp/server/handle-rsvp-query";
 import {
   resolveOrCreateWhatsAppUser,
   touchWhatsAppSessionOutbound,
@@ -68,6 +70,25 @@ export async function handleInboundWhatsAppMessage(
       await sendTextMessage(
         message.from,
         "Sorry — I couldn't publish your event right now. Please try again in a moment.",
+      );
+      await touchWhatsAppSessionOutbound(message.from);
+      return;
+    }
+  }
+
+  if (isRsvpQueryIntent(text)) {
+    try {
+      const result = await handleRsvpQuery(context);
+      await sendTextMessage(message.from, result.reply);
+      await touchWhatsAppSessionOutbound(message.from);
+      return;
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      logError("rsvp_query.failed", { reason, waId: message.from });
+
+      await sendTextMessage(
+        message.from,
+        "Sorry — I couldn't fetch RSVP stats right now. Please try again in a moment.",
       );
       await touchWhatsAppSessionOutbound(message.from);
       return;

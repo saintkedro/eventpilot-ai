@@ -13,6 +13,8 @@ export type EventStatus =
   | "archived"
   | "cancelled";
 
+export type RsvpStatus = "yes" | "no" | "maybe";
+
 export type Database = {
   public: {
     Tables: {
@@ -185,6 +187,50 @@ export type Database = {
           },
         ];
       };
+      event_rsvps: {
+        Row: {
+          id: string;
+          event_id: string;
+          guest_name: string;
+          guest_phone: string | null;
+          guest_email: string | null;
+          status: RsvpStatus;
+          source: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          event_id: string;
+          guest_name: string;
+          guest_phone?: string | null;
+          guest_email?: string | null;
+          status: RsvpStatus;
+          source?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          event_id?: string;
+          guest_name?: string;
+          guest_phone?: string | null;
+          guest_email?: string | null;
+          status?: RsvpStatus;
+          source?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "event_rsvps_event_id_fkey";
+            columns: ["event_id"];
+            isOneToOne: false;
+            referencedRelation: "events";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       whatsapp_sessions: {
         Row: {
           id: string;
@@ -241,6 +287,7 @@ export type Database = {
     Functions: Record<string, never>;
     Enums: {
       event_status: EventStatus;
+      rsvp_status: RsvpStatus;
     };
     CompositeTypes: Record<string, never>;
   };

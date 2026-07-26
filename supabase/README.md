@@ -9,7 +9,9 @@ EventPilot project: `jczrjwuockbjcsosznln`
 ### Option A — Supabase Dashboard (no CLI)
 
 1. Open [Supabase SQL Editor](https://supabase.com/dashboard/project/jczrjwuockbjcsosznln/sql/new)
-2. Paste contents of `migrations/20260725160000_whatsapp_core_schema.sql`
+2. Paste contents of each migration in `migrations/` (in order), e.g.:
+   - `20260725160000_whatsapp_core_schema.sql`
+   - `20260726140000_event_rsvps.sql`
 3. Run
 
 ### Option B — Supabase CLI
@@ -40,6 +42,7 @@ Get the service role key from **Project Settings → API** (never expose to the 
 | `whatsapp_identities` | Meta `wa_id` → profile |
 | `organizations` | Tenant; auto `"Personal"` org on first message |
 | `events` | Event records (draft → published → …) |
+| `event_rsvps` | Guest RSVPs (yes / no / maybe) for published events |
 | `whatsapp_sessions` | Conversation / AI intake state |
 
 ## Security
