@@ -1,6 +1,8 @@
 import "server-only";
 
+import { isPublishIntent } from "@/features/whatsapp/server/detect-publish-intent";
 import { runEventIntake } from "@/features/whatsapp/server/event-intake/run-event-intake";
+import { handlePublishEvent } from "@/features/whatsapp/server/publish-event";
 import {
   resolveOrCreateWhatsAppUser,
   touchWhatsAppSessionOutbound,
@@ -43,6 +45,35 @@ export async function handleInboundWhatsAppMessage(
     return;
   }
 
+  const text = message.text.trim();
+
+  if (isPublishIntent(text)) {
+    try {
+      const result = await handlePublishEvent(context);
+
+      if (result.published) {
+        logInfo("whatsapp.event_published", {
+          eventId: result.eventId,
+          waId: message.from,
+        });
+      }
+
+      await sendTextMessage(message.from, result.reply);
+      await touchWhatsAppSessionOutbound(message.from);
+      return;
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      logError("event_publish.failed", { reason, waId: message.from });
+
+      await sendTextMessage(
+        message.from,
+        "Sorry — I couldn't publish your event right now. Please try again in a moment.",
+      );
+      await touchWhatsAppSessionOutbound(message.from);
+      return;
+    }
+  }
+
   const openai = tryGetOpenAIEnv();
 
   if (!openai) {
@@ -56,7 +87,7 @@ export async function handleInboundWhatsAppMessage(
 
   try {
     const result = await runEventIntake({
-      userMessage: message.text,
+      userMessage: text,
       context,
     });
 
