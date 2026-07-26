@@ -1,16 +1,10 @@
-/** WhatsApp click-to-chat link for EventPilot (digits only, no +). */
-export function getEventPilotWhatsAppUrl(text?: string): string | null {
-  const waId = process.env.NEXT_PUBLIC_WHATSAPP_CONTACT_WA_ID?.trim();
+/** Default EventPilot business WhatsApp id (Meta test / production number). */
+const DEFAULT_WHATSAPP_CONTACT_WA_ID = "15551932991";
 
-  if (!waId) {
-    return null;
-  }
-
-  const digits = waId.replace(/\D/g, "");
-
-  if (!digits) {
-    return null;
-  }
+/** WhatsApp click-to-chat link for EventPilot. */
+export function getEventPilotWhatsAppUrl(text?: string): string {
+  const configured = process.env.NEXT_PUBLIC_WHATSAPP_CONTACT_WA_ID?.trim();
+  const digits = (configured || DEFAULT_WHATSAPP_CONTACT_WA_ID).replace(/\D/g, "");
 
   const base = `https://wa.me/${digits}`;
 

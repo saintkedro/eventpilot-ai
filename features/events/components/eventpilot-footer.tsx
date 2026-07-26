@@ -9,22 +9,20 @@ export function EventPilotFooter() {
         Powered by EventPilot
       </p>
       <p className="mt-2 text-sm font-medium text-zinc-800 dark:text-zinc-200">
-        Your event coordinator on WhatsApp
+        Your Event Coordinator on WhatsApp
       </p>
       <p className="mt-1 text-sm text-zinc-500">
         Create and manage any event — no app required.
       </p>
 
-      {whatsappHiUrl ? (
-        <a
-          href={whatsappHiUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mt-4 inline-block text-sm font-medium text-emerald-700 hover:underline dark:text-emerald-400"
-        >
-          Say Hi to EventPilot
-        </a>
-      ) : null}
+      <a
+        href={whatsappHiUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="mt-4 inline-block text-sm font-medium text-emerald-700 hover:underline dark:text-emerald-400"
+      >
+        Say Hi to EventPilot
+      </a>
     </footer>
   );
 }
