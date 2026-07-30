@@ -1,5 +1,6 @@
 import { getWhatsAppEnv } from "@/lib/env/server";
 import { logError } from "@/lib/logger";
+import { recordWhatsAppOutboundUsage } from "@/features/usage/server/record-usage-event";
 
 type SendTextMessageResult = {
   messageId?: string;
@@ -68,5 +69,13 @@ export async function sendTextMessage(
     messages?: Array<{ id?: string }>;
   };
 
-  return { messageId: data.messages?.[0]?.id };
+  const messageId = data.messages?.[0]?.id;
+
+  void recordWhatsAppOutboundUsage({
+    waId: to,
+    messageId,
+    bodyLength: body.length,
+  });
+
+  return { messageId };
 }

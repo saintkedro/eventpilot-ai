@@ -91,9 +91,10 @@ export default async function UsageAdminPage({ searchParams }: UsageAdminPagePro
             Usage dashboard
           </h1>
           <p className="mt-2 max-w-2xl text-sm text-zinc-600 dark:text-zinc-400">
-            OpenAI token usage and estimated spend per WhatsApp conversation.
-            Estimates use list prices in{" "}
-            <code className="font-mono text-xs">lib/openai/pricing.ts</code>.
+            OpenAI token usage and estimated WhatsApp + AI spend per
+            conversation. Estimates use{" "}
+            <code className="font-mono text-xs">lib/openai/pricing.ts</code> and{" "}
+            <code className="font-mono text-xs">lib/whatsapp/pricing.ts</code>.
           </p>
         </div>
 

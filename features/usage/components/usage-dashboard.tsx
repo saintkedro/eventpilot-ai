@@ -5,19 +5,27 @@ import {
   formatUsageTimestamp,
   shortenId,
 } from "@/features/usage/lib/format-usage";
+import {
+  buildUsageAdminUrl,
+  getUsageDatePresets,
+  isActiveDatePreset,
+  type UsageFilterParams,
+} from "@/features/usage/lib/usage-filter-url";
 
 type SpendBarChartProps = {
   items: Array<{ label: string; value: number; sublabel?: string }>;
+  emptyMessage?: string;
 };
 
-export function SpendBarChart({ items }: SpendBarChartProps) {
+export function SpendBarChart({
+  items,
+  emptyMessage = "No usage data yet.",
+}: SpendBarChartProps) {
   const max = Math.max(...items.map((item) => item.value), 0.000001);
 
   if (items.length === 0) {
     return (
-      <p className="text-sm text-zinc-500 dark:text-zinc-400">
-        No usage data yet. Send a WhatsApp message that triggers AI intake.
-      </p>
+      <p className="text-sm text-zinc-500 dark:text-zinc-400">{emptyMessage}</p>
     );
   }
 
@@ -76,39 +84,80 @@ function SummaryCard({ label, value, hint }: SummaryCardProps) {
 
 type UsageDashboardProps = {
   report: UsageReport;
-  filters: {
-    since?: string;
-    waId?: string;
-    sessionId?: string;
-    limit?: string;
-  };
+  filters: UsageFilterParams;
 };
+
+function DatePresetLinks({ filters }: { filters: UsageFilterParams }) {
+  const presets = getUsageDatePresets();
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      {presets.map((preset) => {
+        const href = buildUsageAdminUrl({
+          ...filters,
+          since: preset.since,
+        });
+        const active = isActiveDatePreset(filters, preset);
+
+        return (
+          <a
+            key={preset.label}
+            href={href}
+            className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+              active
+                ? "bg-emerald-600 text-white"
+                : "border border-zinc-300 text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
+            }`}
+          >
+            {preset.label}
+          </a>
+        );
+      })}
+    </div>
+  );
+}
 
 export function UsageDashboard({ report, filters }: UsageDashboardProps) {
   const openAi = report.summary.byKind.openai_chat;
+  const whatsapp = report.summary.byKind.whatsapp_outbound;
   const avgPerSession =
     report.bySession.length > 0
       ? report.summary.totalEstimatedUsd / report.bySession.length
       : 0;
 
-  const chartItems = report.byWaId.slice(0, 8).map((row) => ({
+  const organizerChartItems = report.byWaId.slice(0, 8).map((row) => ({
     label: row.waId ? `wa_id ${row.waId}` : "Unknown",
-    sublabel: `${row.eventCount} AI call${row.eventCount === 1 ? "" : "s"}`,
+    sublabel: `${row.eventCount} usage event${row.eventCount === 1 ? "" : "s"}`,
+    value: row.estimatedUsd,
+  }));
+
+  const eventChartItems = report.byEvent.slice(0, 8).map((row) => ({
+    label: row.eventTitle ?? shortenId(row.eventId),
+    sublabel: row.publicSlug ? `/e/${row.publicSlug}` : undefined,
     value: row.estimatedUsd,
   }));
 
   return (
     <div className="space-y-8">
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <SummaryCard
           label="Estimated spend"
           value={formatUsd(report.summary.totalEstimatedUsd)}
           hint={`${report.summary.totalEvents} recorded events`}
         />
         <SummaryCard
-          label="OpenAI calls"
+          label="OpenAI"
           value={String(openAi?.count ?? 0)}
           hint={openAi ? formatUsd(openAi.estimatedUsd) : "No AI usage yet"}
+        />
+        <SummaryCard
+          label="WhatsApp outbound"
+          value={String(whatsapp?.count ?? 0)}
+          hint={
+            whatsapp
+              ? formatUsd(whatsapp.estimatedUsd)
+              : "No outbound messages logged"
+          }
         />
         <SummaryCard
           label="Tokens (prompt / completion)"
@@ -125,74 +174,169 @@ export function UsageDashboard({ report, filters }: UsageDashboardProps) {
         <div className="rounded-2xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-950">
           <h2 className="text-lg font-semibold">Spend by organizer</h2>
           <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-            Top WhatsApp IDs by estimated OpenAI cost
+            Top WhatsApp IDs by total estimated cost
           </p>
           <div className="mt-5">
-            <SpendBarChart items={chartItems} />
+            <SpendBarChart
+              items={organizerChartItems}
+              emptyMessage="No organizer usage yet."
+            />
           </div>
         </div>
 
         <div className="rounded-2xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-950">
-          <h2 className="text-lg font-semibold">Filters</h2>
+          <h2 className="text-lg font-semibold">Spend by event</h2>
           <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-            Narrow the report (GET params)
+            OpenAI + WhatsApp tied to an active event
           </p>
-          <form className="mt-5 space-y-3" method="get">
-            <label className="block text-sm">
-              <span className="font-medium">Since (ISO date)</span>
-              <input
-                name="since"
-                type="datetime-local"
-                defaultValue={filters.since?.slice(0, 16) ?? ""}
-                className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
-              />
-            </label>
-            <label className="block text-sm">
-              <span className="font-medium">WhatsApp ID</span>
-              <input
-                name="waId"
-                type="text"
-                defaultValue={filters.waId ?? ""}
-                placeholder="2348012345678"
-                className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
-              />
-            </label>
-            <label className="block text-sm">
-              <span className="font-medium">Session ID</span>
-              <input
-                name="sessionId"
-                type="text"
-                defaultValue={filters.sessionId ?? ""}
-                placeholder="uuid"
-                className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
-              />
-            </label>
-            <label className="block text-sm">
-              <span className="font-medium">Limit</span>
-              <input
-                name="limit"
-                type="number"
-                min={1}
-                max={200}
-                defaultValue={filters.limit ?? "50"}
-                className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
-              />
-            </label>
-            <div className="flex gap-2 pt-2">
-              <button
-                type="submit"
-                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700"
-              >
-                Apply
-              </button>
-              <a
-                href="/admin/usage"
-                className="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-900"
-              >
-                Reset
-              </a>
-            </div>
-          </form>
+          <div className="mt-5">
+            <SpendBarChart
+              items={eventChartItems}
+              emptyMessage="No event-linked usage yet. Usage appears when a session has an active event."
+            />
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-950">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold">Filters</h2>
+            <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+              Date presets and advanced filters
+            </p>
+          </div>
+          <DatePresetLinks filters={filters} />
+        </div>
+
+        <form className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4" method="get">
+          <label className="block text-sm">
+            <span className="font-medium">Since</span>
+            <input
+              name="since"
+              type="datetime-local"
+              defaultValue={filters.since?.slice(0, 16) ?? ""}
+              className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="font-medium">WhatsApp ID</span>
+            <input
+              name="waId"
+              type="text"
+              defaultValue={filters.waId ?? ""}
+              placeholder="2348012345678"
+              className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="font-medium">Session ID</span>
+            <input
+              name="sessionId"
+              type="text"
+              defaultValue={filters.sessionId ?? ""}
+              placeholder="uuid"
+              className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="font-medium">Limit</span>
+            <input
+              name="limit"
+              type="number"
+              min={1}
+              max={200}
+              defaultValue={filters.limit ?? "50"}
+              className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+            />
+          </label>
+          <div className="flex gap-2 sm:col-span-2 lg:col-span-4">
+            <button
+              type="submit"
+              className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700"
+            >
+              Apply
+            </button>
+            <a
+              href="/admin/usage"
+              className="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-900"
+            >
+              Reset
+            </a>
+          </div>
+        </form>
+      </section>
+
+      <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
+        <div className="border-b border-zinc-200 px-6 py-4 dark:border-zinc-800">
+          <h2 className="text-lg font-semibold">By event</h2>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead className="bg-zinc-50 text-left text-xs uppercase tracking-wide text-zinc-500 dark:bg-zinc-900 dark:text-zinc-400">
+              <tr>
+                <th className="px-4 py-3">Event</th>
+                <th className="px-4 py-3">Slug</th>
+                <th className="px-4 py-3">Usage</th>
+                <th className="px-4 py-3">OpenAI</th>
+                <th className="px-4 py-3">WhatsApp</th>
+                <th className="px-4 py-3">Tokens</th>
+                <th className="px-4 py-3">Total USD</th>
+                <th className="px-4 py-3">Last activity</th>
+              </tr>
+            </thead>
+            <tbody>
+              {report.byEvent.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={8}
+                    className="px-4 py-8 text-center text-zinc-500 dark:text-zinc-400"
+                  >
+                    No event-linked usage yet.
+                  </td>
+                </tr>
+              ) : (
+                report.byEvent.map((row) => (
+                  <tr
+                    key={row.eventId}
+                    className="border-t border-zinc-100 dark:border-zinc-800"
+                  >
+                    <td className="px-4 py-3 font-medium">
+                      {row.eventTitle ?? shortenId(row.eventId)}
+                    </td>
+                    <td className="px-4 py-3 font-mono text-xs">
+                      {row.publicSlug ? (
+                        <a
+                          href={`/e/${row.publicSlug}`}
+                          className="text-emerald-700 hover:underline dark:text-emerald-400"
+                        >
+                          {row.publicSlug}
+                        </a>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                    <td className="px-4 py-3">{row.usageCount}</td>
+                    <td className="px-4 py-3 font-mono text-xs">
+                      {formatUsd(row.openaiUsd)}
+                    </td>
+                    <td className="px-4 py-3 font-mono text-xs">
+                      {formatUsd(row.whatsappUsd)}
+                    </td>
+                    <td className="px-4 py-3 font-mono text-xs">
+                      {formatTokens(row.promptTokens + row.completionTokens)}
+                    </td>
+                    <td className="px-4 py-3 font-mono text-xs">
+                      {formatUsd(row.estimatedUsd)}
+                    </td>
+                    <td className="px-4 py-3">
+                      {formatUsageTimestamp(row.lastAt)}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
       </section>
 
@@ -206,7 +350,7 @@ export function UsageDashboard({ report, filters }: UsageDashboardProps) {
               <tr>
                 <th className="px-4 py-3">Session</th>
                 <th className="px-4 py-3">WhatsApp ID</th>
-                <th className="px-4 py-3">Calls</th>
+                <th className="px-4 py-3">Events</th>
                 <th className="px-4 py-3">Tokens</th>
                 <th className="px-4 py-3">Est. USD</th>
                 <th className="px-4 py-3">Last activity</th>
@@ -265,6 +409,7 @@ export function UsageDashboard({ report, filters }: UsageDashboardProps) {
                 <th className="px-4 py-3">Model</th>
                 <th className="px-4 py-3">Tokens</th>
                 <th className="px-4 py-3">Est. USD</th>
+                <th className="px-4 py-3">Event</th>
                 <th className="px-4 py-3">Session</th>
               </tr>
             </thead>
@@ -272,7 +417,7 @@ export function UsageDashboard({ report, filters }: UsageDashboardProps) {
               {report.recent.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={6}
+                    colSpan={7}
                     className="px-4 py-8 text-center text-zinc-500 dark:text-zinc-400"
                   >
                     No events recorded yet.
@@ -298,6 +443,9 @@ export function UsageDashboard({ report, filters }: UsageDashboardProps) {
                     </td>
                     <td className="px-4 py-3 font-mono text-xs">
                       {formatUsd(Number(row.estimated_usd))}
+                    </td>
+                    <td className="px-4 py-3 font-mono text-xs">
+                      {row.event_id ? shortenId(row.event_id) : "—"}
                     </td>
                     <td className="px-4 py-3 font-mono text-xs">
                       {row.session_id ? shortenId(row.session_id) : "—"}

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { estimateOpenAIChatCostUsd } from "@/lib/openai/pricing";
+import { estimateWhatsAppOutboundCostUsd } from "@/lib/whatsapp/pricing";
 import { logError, logInfo } from "@/lib/logger";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Json, TablesInsert } from "@/types/database";
@@ -59,5 +60,58 @@ export async function recordOpenAIChatUsage(
     promptTokens: input.promptTokens,
     completionTokens: input.completionTokens,
     estimatedUsd,
+  });
+}
+
+type RecordWhatsAppOutboundUsageInput = {
+  waId: string;
+  messageId?: string;
+  bodyLength: number;
+};
+
+/** Persists outbound WhatsApp send for cost tracking (estimated). */
+export async function recordWhatsAppOutboundUsage(
+  input: RecordWhatsAppOutboundUsageInput,
+): Promise<void> {
+  const estimatedUsd = estimateWhatsAppOutboundCostUsd();
+  const supabase = createAdminClient();
+
+  const { data: session } = await supabase
+    .from("whatsapp_sessions")
+    .select("id, active_event_id")
+    .eq("wa_id", input.waId)
+    .maybeSingle();
+
+  const row: TablesInsert<"usage_events"> = {
+    kind: "whatsapp_outbound",
+    session_id: session?.id ?? null,
+    wa_id: input.waId,
+    event_id: session?.active_event_id ?? null,
+    estimated_usd: estimatedUsd,
+    metadata: {
+      messageId: input.messageId ?? null,
+      bodyLength: input.bodyLength,
+      pricingModel: "utility_message_estimate",
+    } as Json,
+  };
+
+  const { error } = await supabase.from("usage_events").insert(row);
+
+  if (error) {
+    logError("usage.record_failed", {
+      kind: "whatsapp_outbound",
+      waId: input.waId,
+      error: error.message,
+    });
+    return;
+  }
+
+  logInfo("usage.recorded", {
+    kind: "whatsapp_outbound",
+    waId: input.waId,
+    sessionId: session?.id,
+    eventId: session?.active_event_id,
+    estimatedUsd,
+    bodyLength: input.bodyLength,
   });
 }

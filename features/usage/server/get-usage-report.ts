@@ -17,11 +17,24 @@ type KindSummary = {
   completionTokens: number;
 };
 
-type GroupSummary = {
+export type GroupSummary = {
   sessionId: string | null;
   waId: string | null;
   eventCount: number;
   estimatedUsd: number;
+  promptTokens: number;
+  completionTokens: number;
+  lastAt: string;
+};
+
+export type EventGroupSummary = {
+  eventId: string;
+  eventTitle: string | null;
+  publicSlug: string | null;
+  usageCount: number;
+  estimatedUsd: number;
+  openaiUsd: number;
+  whatsappUsd: number;
   promptTokens: number;
   completionTokens: number;
   lastAt: string;
@@ -37,6 +50,7 @@ export type UsageReport = {
   };
   bySession: GroupSummary[];
   byWaId: GroupSummary[];
+  byEvent: EventGroupSummary[];
   recent: Tables<"usage_events">[];
 };
 
@@ -84,6 +98,83 @@ function aggregateByKey(
   }
 
   return [...map.values()].sort((a, b) => b.estimatedUsd - a.estimatedUsd);
+}
+
+function aggregateByEvent(rows: Tables<"usage_events">[]): EventGroupSummary[] {
+  const map = new Map<string, EventGroupSummary>();
+
+  for (const row of rows) {
+    if (!row.event_id) {
+      continue;
+    }
+
+    const estimatedUsd = Number(row.estimated_usd ?? 0);
+    const isOpenAi = row.kind === "openai_chat";
+    const isWhatsApp = row.kind === "whatsapp_outbound";
+    const existing = map.get(row.event_id);
+
+    if (!existing) {
+      map.set(row.event_id, {
+        eventId: row.event_id,
+        eventTitle: null,
+        publicSlug: null,
+        usageCount: 1,
+        estimatedUsd,
+        openaiUsd: isOpenAi ? estimatedUsd : 0,
+        whatsappUsd: isWhatsApp ? estimatedUsd : 0,
+        promptTokens: row.prompt_tokens ?? 0,
+        completionTokens: row.completion_tokens ?? 0,
+        lastAt: row.created_at,
+      });
+      continue;
+    }
+
+    existing.usageCount += 1;
+    existing.estimatedUsd = roundUsd(existing.estimatedUsd + estimatedUsd);
+    existing.openaiUsd = roundUsd(
+      existing.openaiUsd + (isOpenAi ? estimatedUsd : 0),
+    );
+    existing.whatsappUsd = roundUsd(
+      existing.whatsappUsd + (isWhatsApp ? estimatedUsd : 0),
+    );
+    existing.promptTokens += row.prompt_tokens ?? 0;
+    existing.completionTokens += row.completion_tokens ?? 0;
+    if (row.created_at > existing.lastAt) {
+      existing.lastAt = row.created_at;
+    }
+  }
+
+  return [...map.values()].sort((a, b) => b.estimatedUsd - a.estimatedUsd);
+}
+
+async function attachEventTitles(
+  groups: EventGroupSummary[],
+): Promise<EventGroupSummary[]> {
+  if (groups.length === 0) {
+    return groups;
+  }
+
+  const supabase = createAdminClient();
+  const eventIds = groups.map((group) => group.eventId);
+  const { data: events, error } = await supabase
+    .from("events")
+    .select("id, title, public_slug")
+    .in("id", eventIds);
+
+  if (error || !events) {
+    return groups;
+  }
+
+  const byId = new Map(events.map((event) => [event.id, event]));
+
+  return groups.map((group) => {
+    const event = byId.get(group.eventId);
+    return {
+      ...group,
+      eventTitle: event?.title ?? null,
+      publicSlug: event?.public_slug ?? null,
+    };
+  });
 }
 
 /** Loads usage events and returns rollups for admin reporting. */
@@ -145,6 +236,10 @@ export async function getUsageReport(
     };
   }
 
+  const byEvent = await attachEventTitles(
+    aggregateByEvent(rows).slice(0, limit),
+  );
+
   return {
     summary: {
       totalEvents: rows.length,
@@ -155,6 +250,7 @@ export async function getUsageReport(
     },
     bySession: aggregateByKey(rows, "session_id").slice(0, limit),
     byWaId: aggregateByKey(rows, "wa_id").slice(0, limit),
+    byEvent,
     recent: rows.slice(0, limit),
   };
 }
