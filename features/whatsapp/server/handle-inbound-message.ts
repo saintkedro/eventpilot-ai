@@ -41,7 +41,7 @@ export async function handleInboundWhatsAppMessage(
   if (message.type !== "text" || !message.text?.trim()) {
     await sendTextMessage(
       message.from,
-      "I can help you plan events over text for now — tell me what you're organizing!",
+      "I can help you plan events over text — send Hi to get started, or use this format:\n\n*[Event name]* on *[date]* at *[time]*. I'm *[your name]*.",
     );
     await touchWhatsAppSessionOutbound(message.from);
     return;

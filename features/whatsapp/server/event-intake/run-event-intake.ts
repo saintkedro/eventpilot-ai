@@ -1,13 +1,18 @@
 import "server-only";
 
 import { buildEventSyncReply } from "@/features/events/server/build-event-sync-reply";
-import { updateProfileDisplayName } from "@/features/profiles/server/update-display-name";
+import { setProfileDisplayName } from "@/features/profiles/server/update-display-name";
+import { isNewEventIntent } from "@/features/whatsapp/server/detect-new-event-intent";
 import {
   clearSessionActiveEvent,
   createDraftEventFromIntake,
   linkSessionToEvent,
   updateDraftEventFromIntake,
 } from "@/features/whatsapp/server/event-intake/persist-event";
+import {
+  buildNewEventResetMessage,
+  buildWelcomeMessage,
+} from "@/features/whatsapp/server/event-intake/intake-messages";
 import {
   buildIntakeUserPayload,
   buildEventIntakeSystemPrompt,
@@ -22,9 +27,7 @@ import type {
   IntakeModelResponse,
   IntakeSessionState,
 } from "@/features/whatsapp/server/event-intake/types";
-import {
-  intakeStateToJson,
-} from "@/features/whatsapp/server/event-intake/types";
+import { intakeStateToJson } from "@/features/whatsapp/server/event-intake/types";
 import type { WhatsAppUserContext } from "@/features/whatsapp/server/resolve-or-create-user";
 import { recordOpenAIChatUsage } from "@/features/usage/server/record-usage-event";
 import { createChatCompletion } from "@/lib/openai/client";
@@ -46,20 +49,21 @@ type RunEventIntakeResult = {
   eventId?: string;
 };
 
-function welcomeMessage(isNewUser: boolean): string {
-  if (isNewUser) {
-    return [
-      "Hi! I'm EventPilot — your event coordinator on WhatsApp.",
-      "",
-      "Tell me about the event you're planning (e.g. \"Birthday party for my son on August 15 at 2pm\").",
-    ].join("\n");
+async function loadActiveEventTitle(
+  activeEventId: string | null,
+): Promise<string | null> {
+  if (!activeEventId) {
+    return null;
   }
 
-  return [
-    "Welcome back! I'm EventPilot.",
-    "",
-    "Tell me about the event you're planning, or share updates to your current draft.",
-  ].join("\n");
+  const supabase = createAdminClient();
+  const { data } = await supabase
+    .from("events")
+    .select("title")
+    .eq("id", activeEventId)
+    .maybeSingle();
+
+  return data?.title?.trim() ?? null;
 }
 
 function parseModelResponse(raw: string): IntakeModelResponse {
@@ -124,6 +128,29 @@ async function saveSessionState(
   }
 }
 
+async function resetForNewEvent(
+  context: WhatsAppUserContext,
+  state: IntakeSessionState,
+  userMessage: string,
+  reply: string,
+): Promise<RunEventIntakeResult> {
+  await clearSessionActiveEvent(context.session.wa_id);
+
+  const nextState: IntakeSessionState = {
+    step: "intake",
+    draft: {},
+    history: appendHistory(
+      { ...state, draft: {}, history: [] },
+      userMessage,
+      reply,
+    ),
+  };
+
+  await saveSessionState(context.session.id, nextState);
+
+  return { reply, state: nextState, eventCreated: false };
+}
+
 /** Runs conversational event intake for a WhatsApp text message. */
 export async function runEventIntake(
   input: RunEventIntakeInput,
@@ -131,15 +158,33 @@ export async function runEventIntake(
   const { userMessage, context } = input;
   const trimmed = userMessage.trim();
   let state = await loadIntakeSessionState(context.session.id);
+  let activeEventId = context.session.active_event_id;
+  let activeEventTitle = await loadActiveEventTitle(activeEventId);
+  const organizerNameOnFile = context.profile.display_name?.trim() ?? null;
 
   logInfo("event_intake.start", {
     sessionId: context.session.id,
     step: state.step,
     historyLength: state.history.length,
+    activeEventId,
   });
 
+  if (isNewEventIntent(trimmed)) {
+    return resetForNewEvent(
+      context,
+      state,
+      trimmed,
+      buildNewEventResetMessage(),
+    );
+  }
+
   if (GREETING_PATTERN.test(trimmed) && state.step === "idle") {
-    const reply = welcomeMessage(context.isNewUser);
+    const reply = buildWelcomeMessage({
+      isNewUser: context.isNewUser,
+      activeEventTitle,
+      organizerName: organizerNameOnFile,
+    });
+
     state = {
       ...state,
       step: "intake",
@@ -152,28 +197,40 @@ export async function runEventIntake(
   }
 
   if (state.step === "event_created" && GREETING_PATTERN.test(trimmed)) {
-    const reply = welcomeMessage(false);
-    state = {
-      step: "intake",
-      draft: {},
-      history: [{ role: "assistant", content: reply }],
-    };
-    await clearSessionActiveEvent(context.session.wa_id);
-    await saveSessionState(context.session.id, state);
-    return { reply, state, eventCreated: false };
+    return resetForNewEvent(
+      context,
+      state,
+      trimmed,
+      buildWelcomeMessage({
+        isNewUser: false,
+        organizerName: organizerNameOnFile,
+      }),
+    );
   }
 
   const referenceDate = new Date();
+  const promptContext = {
+    referenceDate,
+    activeEventTitle,
+    organizerName: organizerNameOnFile,
+  };
 
   const completion = await createChatCompletion([
-    { role: "system", content: buildEventIntakeSystemPrompt(referenceDate) },
+    { role: "system", content: buildEventIntakeSystemPrompt(promptContext) },
     ...state.history.map((turn) => ({
       role: turn.role,
       content: turn.content,
     })),
     {
       role: "user",
-      content: buildIntakeUserPayload(trimmed, state.draft, referenceDate),
+      content: buildIntakeUserPayload({
+        userMessage: trimmed,
+        currentDraft: state.draft,
+        referenceDate,
+        activeEventId,
+        activeEventTitle,
+        organizerName: organizerNameOnFile,
+      }),
     },
   ]);
 
@@ -181,7 +238,7 @@ export async function runEventIntake(
     void recordOpenAIChatUsage({
       sessionId: context.session.id,
       waId: context.session.wa_id,
-      eventId: context.session.active_event_id,
+      eventId: activeEventId,
       model: completion.model,
       promptTokens: completion.usage.promptTokens,
       completionTokens: completion.usage.completionTokens,
@@ -204,9 +261,9 @@ export async function runEventIntake(
     throw new Error("Failed to parse AI intake response");
   }
 
-  if (model.organizer_name && !context.profile.display_name?.trim()) {
+  if (model.organizer_name) {
     try {
-      await updateProfileDisplayName(context.profile.id, model.organizer_name);
+      await setProfileDisplayName(context.profile.id, model.organizer_name);
     } catch (error) {
       logError("profile.display_name_update_failed", {
         profileId: context.profile.id,
@@ -214,6 +271,10 @@ export async function runEventIntake(
       });
     }
   }
+
+  const resolvedOrganizerName =
+    model.organizer_name?.trim() || organizerNameOnFile;
+  const hasOrganizerName = Boolean(resolvedOrganizerName?.trim());
 
   const aiDraft = mergeDraft(state.draft, model.draft);
   const hadStartsAt = Boolean(aiDraft.starts_at?.trim());
@@ -228,7 +289,6 @@ export async function runEventIntake(
   let reply = model.reply;
   let eventCreated = false;
   let eventId: string | undefined;
-  const activeEventId = context.session.active_event_id;
 
   state = {
     step: "intake",
@@ -239,12 +299,24 @@ export async function runEventIntake(
   const hasCoreFields =
     Boolean(mergedDraft.title?.trim()) && Boolean(mergedDraft.starts_at?.trim());
 
-  const shouldCreateNew =
-    hasCoreFields &&
-    !activeEventId &&
-    (model.ready_to_create || dateResolvedByServer);
+  const modelReady = model.ready_to_create || dateResolvedByServer;
+  const readyForPersist = hasCoreFields && hasOrganizerName && modelReady;
 
-  const shouldSyncExisting = hasCoreFields && Boolean(activeEventId);
+  const shouldSyncExisting = readyForPersist && Boolean(activeEventId);
+  const shouldCreateNew = readyForPersist && !activeEventId;
+
+  if (hasCoreFields && !hasOrganizerName && modelReady) {
+    reply = [
+      model.reply,
+      "",
+      "What's your name as the event organizer? (e.g. \"I'm Chioma\")",
+    ].join("\n");
+
+    state.history[state.history.length - 1] = {
+      role: "assistant",
+      content: reply,
+    };
+  }
 
   if (shouldSyncExisting && activeEventId) {
     const event = await updateDraftEventFromIntake(activeEventId, mergedDraft);
@@ -273,6 +345,7 @@ export async function runEventIntake(
     });
 
     await linkSessionToEvent(context.session.wa_id, event.id);
+    activeEventId = event.id;
 
     eventId = event.id;
     eventCreated = true;
@@ -291,8 +364,9 @@ export async function runEventIntake(
       `📅 ${eventDate}`,
       `🕐 ${eventTime}`,
       event.venue_name ? `📍 ${event.venue_name}` : "",
+      resolvedOrganizerName ? `👤 Organizer: ${resolvedOrganizerName}` : "",
       "",
-      "You can keep refining details here, or ask me to publish when you're ready.",
+      "You can keep refining details here, say *publish my event* when ready, or *new event* to plan something else.",
     ]
       .filter(Boolean)
       .join("\n");

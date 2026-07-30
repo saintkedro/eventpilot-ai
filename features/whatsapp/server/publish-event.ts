@@ -43,6 +43,8 @@ function buildPublishReply(event: Tables<"events">, alreadyPublished: boolean): 
     "",
     alreadyPublished ? "Share with guests:" : "Share this link with guests:",
     link,
+    "",
+    "Say *new event* when you want to plan another.",
   ]
     .filter(Boolean)
     .join("\n");

@@ -35,5 +35,7 @@ export function buildEventSyncReply(
     lines.push("", "Say *publish my event* when you're ready to share.");
   }
 
+  lines.push("", "Say *new event* to plan something different.");
+
   return lines.filter(Boolean).join("\n");
 }
