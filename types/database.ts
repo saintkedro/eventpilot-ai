@@ -15,6 +15,8 @@ export type EventStatus =
 
 export type RsvpStatus = "yes" | "no" | "maybe";
 
+export type UsageEventKind = "openai_chat" | "whatsapp_outbound";
+
 export type Database = {
   public: {
     Tables: {
@@ -231,6 +233,66 @@ export type Database = {
           },
         ];
       };
+      usage_events: {
+        Row: {
+          id: string;
+          kind: UsageEventKind;
+          session_id: string | null;
+          wa_id: string | null;
+          event_id: string | null;
+          model: string | null;
+          prompt_tokens: number | null;
+          completion_tokens: number | null;
+          total_tokens: number | null;
+          estimated_usd: number;
+          metadata: Json;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          kind: UsageEventKind;
+          session_id?: string | null;
+          wa_id?: string | null;
+          event_id?: string | null;
+          model?: string | null;
+          prompt_tokens?: number | null;
+          completion_tokens?: number | null;
+          total_tokens?: number | null;
+          estimated_usd?: number;
+          metadata?: Json;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          kind?: UsageEventKind;
+          session_id?: string | null;
+          wa_id?: string | null;
+          event_id?: string | null;
+          model?: string | null;
+          prompt_tokens?: number | null;
+          completion_tokens?: number | null;
+          total_tokens?: number | null;
+          estimated_usd?: number;
+          metadata?: Json;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "usage_events_session_id_fkey";
+            columns: ["session_id"];
+            isOneToOne: false;
+            referencedRelation: "whatsapp_sessions";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "usage_events_event_id_fkey";
+            columns: ["event_id"];
+            isOneToOne: false;
+            referencedRelation: "events";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       whatsapp_sessions: {
         Row: {
           id: string;
@@ -288,6 +350,7 @@ export type Database = {
     Enums: {
       event_status: EventStatus;
       rsvp_status: RsvpStatus;
+      usage_event_kind: UsageEventKind;
     };
     CompositeTypes: Record<string, never>;
   };

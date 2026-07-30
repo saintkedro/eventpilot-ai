@@ -26,6 +26,7 @@ import {
   intakeStateToJson,
 } from "@/features/whatsapp/server/event-intake/types";
 import type { WhatsAppUserContext } from "@/features/whatsapp/server/resolve-or-create-user";
+import { recordOpenAIChatUsage } from "@/features/usage/server/record-usage-event";
 import { createChatCompletion } from "@/lib/openai/client";
 import { logError, logInfo } from "@/lib/logger";
 import { loadIntakeSessionState } from "@/features/whatsapp/server/event-intake/load-session-state";
@@ -175,6 +176,22 @@ export async function runEventIntake(
       content: buildIntakeUserPayload(trimmed, state.draft, referenceDate),
     },
   ]);
+
+  if (completion.usage) {
+    void recordOpenAIChatUsage({
+      sessionId: context.session.id,
+      waId: context.session.wa_id,
+      eventId: context.session.active_event_id,
+      model: completion.model,
+      promptTokens: completion.usage.promptTokens,
+      completionTokens: completion.usage.completionTokens,
+      totalTokens: completion.usage.totalTokens,
+      metadata: {
+        intakeStep: state.step,
+        historyLength: state.history.length,
+      },
+    });
+  }
 
   let model: IntakeModelResponse;
 

@@ -8,8 +8,16 @@ type ChatMessage = {
   content: string;
 };
 
-type ChatCompletionResult = {
+export type ChatCompletionUsage = {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+};
+
+export type ChatCompletionResult = {
   content: string;
+  model: string;
+  usage?: ChatCompletionUsage;
 };
 
 /** Calls OpenAI chat completions and returns the assistant message text. */
@@ -42,6 +50,12 @@ export async function createChatCompletion(
   }
 
   const data = (await response.json()) as {
+    model?: string;
+    usage?: {
+      prompt_tokens?: number;
+      completion_tokens?: number;
+      total_tokens?: number;
+    };
     choices?: Array<{ message?: { content?: string } }>;
   };
 
@@ -51,5 +65,23 @@ export async function createChatCompletion(
     throw new Error("OpenAI returned an empty response");
   }
 
-  return { content };
+  const usage = data.usage;
+  const resolvedModel = data.model?.trim() || model;
+
+  return {
+    content,
+    model: resolvedModel,
+    usage:
+      usage &&
+      typeof usage.prompt_tokens === "number" &&
+      typeof usage.completion_tokens === "number"
+        ? {
+            promptTokens: usage.prompt_tokens,
+            completionTokens: usage.completion_tokens,
+            totalTokens:
+              usage.total_tokens ??
+              usage.prompt_tokens + usage.completion_tokens,
+          }
+        : undefined,
+  };
 }

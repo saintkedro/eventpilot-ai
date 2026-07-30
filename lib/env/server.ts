@@ -59,3 +59,9 @@ export function tryGetOpenAIEnv():
     model: process.env.OPENAI_MODEL?.trim() || DEFAULT_OPENAI_MODEL,
   };
 }
+
+/** Secret for GET /api/admin/usage (Bearer or ?secret=). */
+export function getUsageAdminSecret(): string | undefined {
+  const secret = process.env.USAGE_ADMIN_SECRET?.trim();
+  return secret || undefined;
+}

@@ -12,6 +12,7 @@ EventPilot project: `jczrjwuockbjcsosznln`
 2. Paste contents of each migration in `migrations/` (in order), e.g.:
    - `20260725160000_whatsapp_core_schema.sql`
    - `20260726140000_event_rsvps.sql`
+   - `20260730120000_usage_events.sql`
 3. Run
 
 ### Option B — Supabase CLI
@@ -43,6 +44,7 @@ Get the service role key from **Project Settings → API** (never expose to the 
 | `organizations` | Tenant; auto `"Personal"` org on first message |
 | `events` | Event records (draft → published → …) |
 | `event_rsvps` | Guest RSVPs (yes / no / maybe) for published events |
+| `usage_events` | OpenAI token usage + estimated USD per conversation turn |
 | `whatsapp_sessions` | Conversation / AI intake state |
 
 ## Security
